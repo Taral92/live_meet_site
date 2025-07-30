@@ -6,7 +6,7 @@ import ChatBox from '../components/ChatBox';
 import MessageInput from '../components/MessageInput';
 import { useUser } from '@clerk/clerk-react';
 
-const socket = io('http://localhost:3000');
+const socket = io('https://live-meet-site.onrender.com');
 const roomId = 'general';
 
 const ChatPage = () => {
