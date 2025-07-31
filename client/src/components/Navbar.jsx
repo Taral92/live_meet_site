@@ -6,7 +6,7 @@ const Navbar = () => {
     <AppBar position="static" sx={{ bgcolor: '#1f1f1f' }}>
       <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
         <Typography variant="h6" color="inherit">
-          🟢 RealTime Chat
+          🟢 Taral's Room
         </Typography>
         <Box>
           <UserButton afterSignOutUrl="/" />
