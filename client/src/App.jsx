@@ -1,24 +1,33 @@
-import { useAuth } from '@clerk/clerk-react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { SignIn } from '@clerk/clerk-react';
-import ChatPage from './pages/ChatPage';
-import ProtectedRoute from './ProtectedRoute';
+import {
+  SignedIn,
+  SignedOut,
+  SignIn,
+  useAuth,
+  RedirectToSignIn,
+} from "@clerk/clerk-react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import ChatPage from "./pages/ChatPage";
+
+const ProtectedRoute = ({ children }) => {
+  const { isLoaded, isSignedIn } = useAuth();
+  const location = useLocation();
+
+  if (!isLoaded) return null;
+
+  if (!isSignedIn) {
+    return <RedirectToSignIn redirectUrl={window.location.origin + location.pathname} />;
+  }
+
+  return children;
+};
 
 const App = () => {
-  const { isLoaded, isSignedIn } = useAuth();
-
   return (
     <Routes>
-      <Route
-        path="/"
-        element={
-          isLoaded && isSignedIn ? (
-            <Navigate to="/chat" replace />
-          ) : (
-            <Navigate to="/sign-in" replace />
-          )
-        }
-      />
+      {/* Redirect root to /chat */}
+      <Route path="/" element={<Navigate to="/chat" />} />
+
+      {/* Protected /chat route */}
       <Route
         path="/chat"
         element={
@@ -27,7 +36,12 @@ const App = () => {
           </ProtectedRoute>
         }
       />
-      <Route path="/sign-in/*" element={<SignIn routing="path" path="/sign-in" />} />
+
+      {/* Sign-in route for Clerk */}
+      <Route
+        path="/sign-in/*"
+        element={<SignIn routing="path" path="/sign-in" />}
+      />
     </Routes>
   );
 };
