@@ -22,7 +22,7 @@ const MeetingRoom = () => {
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
 
-  const backendUrl = 'http://localhost:3000'; // Local testing
+  const backendUrl = 'https://live-meet-site.onrender.com'; // Local testing
 
   useEffect(() => {
     console.log('MeetingRoom mounted with roomId:', roomId);
