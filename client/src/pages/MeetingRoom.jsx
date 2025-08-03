@@ -22,8 +22,7 @@ const MeetingRoom = () => {
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
 
-  // Use environment variable for backend URL, fallback to Render
-  const backendUrl ='https://live-meet-site.onrender.com';
+  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://live-meet-site.onrender.com';
 
   useEffect(() => {
     console.log('MeetingRoom mounted with roomId:', roomId, 'User:', user ? user.id : 'Not loaded');
@@ -37,7 +36,7 @@ const MeetingRoom = () => {
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       transports: ['websocket'],
-      path: '/socket.io', // Ensure this matches your backend socket path
+      path: '/socket.io',
     });
 
     socketRef.current.on('connect', () => {
@@ -48,7 +47,7 @@ const MeetingRoom = () => {
 
     socketRef.current.on('connect_error', (err) => {
       console.error('Socket connection error:', err.message);
-      setError(`Cannot connect to server. Check backend URL: ${backendUrl}. Error: ${err.message}`);
+      setError(`Cannot connect to server. Check URL: ${backendUrl}. Error: ${err.message}`);
     });
 
     socketRef.current.on('disconnect', () => {
@@ -88,12 +87,13 @@ const MeetingRoom = () => {
           });
           await peerConnection.current.setRemoteDescription(new RTCSessionDescription(offer));
           const answer = await peerConnection.current.createAnswer();
+          console.log('Created answer:', answer);
           await peerConnection.current.setLocalDescription(answer);
           socketRef.current.emit('answer', { answer, target: from }, roomId);
           console.log(`Sent answer to: ${from}`);
         } catch (err) {
           console.error('Error handling offer:', err);
-          setError('Failed to process video call offer.');
+          setError(`Failed to process offer from ${from}. Error: ${err.message}`);
         }
       }
     });
@@ -152,15 +152,14 @@ const MeetingRoom = () => {
         streamRef.current = null;
       }
     };
-  }, [roomId, backendUrl, user]); // Re-run if user changes to handle Clerk loading
+  }, [roomId, backendUrl, user]);
 
   const createPeerConnection = (targetSocketId) => {
     console.log(`Creating peer connection for: ${targetSocketId}`);
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        // Uncomment and add TURN credentials if needed
-        // { urls: 'turn:your-turn-server.com', username: 'user', credential: 'pass' }
+        // Add TURN if needed: { urls: 'turn:your-turn-server.com', username: 'user', credential: 'pass' }
       ],
     });
 
@@ -189,7 +188,7 @@ const MeetingRoom = () => {
         setError(null);
       } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
         setIsConnected(false);
-        setError('Connection lost. Please try again or check network.');
+        setError('Connection lost. Consider adding a TURN server.');
       }
     };
 
@@ -200,7 +199,7 @@ const MeetingRoom = () => {
     try {
       console.log('Requesting media devices');
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 }, // Explicit resolution
+        video: { width: 1280, height: 720 },
         audio: true,
       });
 
@@ -208,10 +207,13 @@ const MeetingRoom = () => {
       if (userVideoRef.current) {
         userVideoRef.current.srcObject = stream;
         console.log('Stream assigned to userVideoRef:', userVideoRef.current.srcObject);
-        await userVideoRef.current.play().catch((err) => {
-          console.error('Error playing local video:', err);
-          setError(`Failed to display local video. Error: ${err.message}. Check browser settings or console.`);
-        });
+        const playPromise = userVideoRef.current.play();
+        if (playPromise !== undefined) {
+          await playPromise.catch((err) => {
+            console.error('Error playing local video:', err);
+            setError(`Failed to play video: ${err.message}. Check browser settings.`);
+          });
+        }
       }
 
       stream.getTracks().forEach((track) => {
@@ -222,7 +224,7 @@ const MeetingRoom = () => {
       setError(null);
     } catch (error) {
       console.error('Error accessing media devices:', error);
-      setError(`Please allow camera and microphone access. Error: ${error.message}. Check permissions.`);
+      setError(`Media access failed: ${error.message}. Check permissions.`);
     }
   };
 
@@ -292,7 +294,7 @@ const MeetingRoom = () => {
             ▶️ Start Meeting
           </Button>
           <Typography color="textSecondary" sx={{ mt: 2 }}>
-            Click "Start Meeting" to enable your camera and mic. Open this link in another tab or device to test: {window.location.href}
+            Click "Start Meeting" to enable camera and mic. Open in another tab/device to test: {window.location.href}
           </Typography>
         </Box>
       )}
@@ -333,7 +335,7 @@ const MeetingRoom = () => {
       )}
       {isStarted && !isConnected && (
         <Typography color="textSecondary" sx={{ mt: 2 }}>
-          Waiting for another user. Share this link in another tab or device: {window.location.href}
+          Waiting for connection. Share this link in another tab/device: {window.location.href}
         </Typography>
       )}
       <Box sx={{ width: '100%', maxWidth: 600, mt: 4 }}>
