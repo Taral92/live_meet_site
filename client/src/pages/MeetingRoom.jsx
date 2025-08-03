@@ -22,14 +22,16 @@ const MeetingRoom = () => {
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
 
-  const backendUrl = 'https://live-meet-site.onrender.com'; // Local testing
+  // Update this to your deployed backend URL
+  const backendUrl ='https://live-meet-site.onrender.com'; // Adjust based on deployment
 
   useEffect(() => {
-    console.log('MeetingRoom mounted with roomId:', roomId);
+    console.log('MeetingRoom mounted with roomId:', roomId, 'User:', user);
     socketRef.current = io(backendUrl, {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      transports: ['websocket'], // Force WebSocket
     });
 
     socketRef.current.on('connect', () => {
@@ -40,7 +42,7 @@ const MeetingRoom = () => {
 
     socketRef.current.on('connect_error', (err) => {
       console.error('Socket connection error:', err.message);
-      setError('Cannot connect to server. Ensure backend is running.');
+      setError(`Cannot connect to server. Check backend URL: ${backendUrl}. Error: ${err.message}`);
     });
 
     socketRef.current.on('disconnect', () => {
@@ -129,7 +131,7 @@ const MeetingRoom = () => {
     });
 
     return () => {
-      console.log('Cleaning up MeetingRoom');
+      console.log('Cleaning up MeetingRoom, User:', user);
       if (socketRef.current) {
         socketRef.current.emit('leave-room', roomId);
         socketRef.current.off();
@@ -144,12 +146,16 @@ const MeetingRoom = () => {
         streamRef.current = null;
       }
     };
-  }, [roomId]); // Stable unless roomId changes
+  }, [roomId, backendUrl]); // Re-run if roomId or backendUrl changes
 
   const createPeerConnection = (targetSocketId) => {
     console.log(`Creating peer connection for: ${targetSocketId}`);
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        // Add TURN server if needed (e.g., from Xirsys or Twilio)
+        // { urls: 'turn:your-turn-server.com', username: 'user', credential: 'pass' }
+      ],
     });
 
     pc.onicecandidate = (event) => {
@@ -198,7 +204,7 @@ const MeetingRoom = () => {
         console.log('Stream assigned to userVideoRef:', userVideoRef.current.srcObject);
         await userVideoRef.current.play().catch((err) => {
           console.error('Error playing local video:', err);
-          setError('Failed to display local video. Check browser settings or try refreshing.');
+          setError('Failed to display local video. Check browser settings or console logs.');
         });
       }
 
@@ -280,7 +286,7 @@ const MeetingRoom = () => {
             ▶️ Start Meeting
           </Button>
           <Typography color="textSecondary" sx={{ mt: 2 }}>
-            Click "Start Meeting" to enable your camera and mic. Open this link in another tab to see remote video/audio: {window.location.href}
+            Click "Start Meeting" to enable your camera and mic. Open this link in another tab or device to test: {window.location.href}
           </Typography>
         </Box>
       )}
