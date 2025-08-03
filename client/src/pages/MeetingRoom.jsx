@@ -5,7 +5,7 @@ import { useUser } from '@clerk/clerk-react';
 import { Box, TextField, Button, IconButton, Typography } from '@mui/material';
 import { Mic, MicOff, Videocam, VideocamOff } from '@mui/icons-material';
 
-const backendUrl = 'http://localhost:3000';
+const backendUrl = 'https://live-meet-site.onrender.com';
 
 const MeetingRoom = () => {
   const { roomId } = useParams();
