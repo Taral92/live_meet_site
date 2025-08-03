@@ -9,7 +9,7 @@ const io = new Server(server, {
   cors: {
     origin: [
       // 'http://localhost:5173',
-      'https://live-meet-site.vercel.app/', // Replace with your deployed frontend URL
+      'https://live-meet-site.vercel.app', // Replace with your deployed frontend URL
     ],
     methods: ['GET', 'POST'],
   },
