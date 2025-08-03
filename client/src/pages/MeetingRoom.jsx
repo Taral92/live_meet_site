@@ -25,7 +25,7 @@ const MeetingRoom = () => {
   const backendUrl = 'http://localhost:3000'; // Local testing
 
   useEffect(() => {
-    console.log('MeetingRoom mounted, initializing Socket.IO');
+    console.log('MeetingRoom mounted with roomId:', roomId);
     socketRef.current = io(backendUrl, {
       reconnection: true,
       reconnectionAttempts: 5,
@@ -40,7 +40,7 @@ const MeetingRoom = () => {
 
     socketRef.current.on('connect_error', (err) => {
       console.error('Socket connection error:', err.message);
-      setError('Cannot connect to server. Ensure backend is running on http://localhost:3000.');
+      setError('Cannot connect to server. Ensure backend is running.');
     });
 
     socketRef.current.on('disconnect', () => {
@@ -130,9 +130,11 @@ const MeetingRoom = () => {
 
     return () => {
       console.log('Cleaning up MeetingRoom');
-      socketRef.current.emit('leave-room', roomId);
-      socketRef.current.off();
-      socketRef.current.disconnect();
+      if (socketRef.current) {
+        socketRef.current.emit('leave-room', roomId);
+        socketRef.current.off();
+        socketRef.current.disconnect();
+      }
       if (peerConnection.current) {
         peerConnection.current.close();
         peerConnection.current = null;
@@ -142,7 +144,7 @@ const MeetingRoom = () => {
         streamRef.current = null;
       }
     };
-  }, [roomId]);
+  }, [roomId]); // Stable unless roomId changes
 
   const createPeerConnection = (targetSocketId) => {
     console.log(`Creating peer connection for: ${targetSocketId}`);
@@ -161,6 +163,9 @@ const MeetingRoom = () => {
       console.log(`Received remote track: ${event.track.kind}`);
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0];
+        remoteVideoRef.current.play().catch((err) => {
+          console.error('Error playing remote video:', err);
+        });
         console.log('Set remote stream to video element');
       }
     };
@@ -190,11 +195,10 @@ const MeetingRoom = () => {
       streamRef.current = stream;
       if (userVideoRef.current) {
         userVideoRef.current.srcObject = stream;
-        console.log('Local stream set with video and audio');
-        // Force video element update
-        userVideoRef.current.play().catch((err) => {
+        console.log('Stream assigned to userVideoRef:', userVideoRef.current.srcObject);
+        await userVideoRef.current.play().catch((err) => {
           console.error('Error playing local video:', err);
-          setError('Failed to display local video. Check browser settings.');
+          setError('Failed to display local video. Check browser settings or try refreshing.');
         });
       }
 
@@ -231,6 +235,11 @@ const MeetingRoom = () => {
         videoTrack.enabled = !videoTrack.enabled;
         setIsVideoMuted(!videoTrack.enabled);
         console.log(`Video ${videoTrack.enabled ? 'unmuted' : 'muted'}`);
+        if (userVideoRef.current) {
+          userVideoRef.current.play().catch((err) => {
+            console.error('Error re-playing video:', err);
+          });
+        }
       } else {
         console.log('No video track available');
         setError('No video device detected.');
@@ -271,7 +280,7 @@ const MeetingRoom = () => {
             ▶️ Start Meeting
           </Button>
           <Typography color="textSecondary" sx={{ mt: 2 }}>
-            Click "Start Meeting" to enable your camera and microphone.
+            Click "Start Meeting" to enable your camera and mic. Open this link in another tab to see remote video/audio: {window.location.href}
           </Typography>
         </Box>
       )}
@@ -312,7 +321,7 @@ const MeetingRoom = () => {
       )}
       {isStarted && !isConnected && (
         <Typography color="textSecondary" sx={{ mt: 2 }}>
-          Waiting for another user to join. Share the meeting link: {window.location.href}
+          Waiting for another user. Share this link in another tab or device: {window.location.href}
         </Typography>
       )}
       <Box sx={{ width: '100%', maxWidth: 600, mt: 4 }}>
