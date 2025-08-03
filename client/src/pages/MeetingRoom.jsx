@@ -7,7 +7,7 @@ import { Mic, MicOff, Videocam, VideocamOff } from '@mui/icons-material';
 
 const MeetingRoom = () => {
   const { roomId } = useParams();
-  const { user } = useUser();
+  const { user, isLoaded } = useUser(); // Use isLoaded to check Clerk readiness
   const userVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const peerConnection = useRef(null);
@@ -22,14 +22,14 @@ const MeetingRoom = () => {
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
 
-  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'https://live-meet-site.onrender.com';
+  const backendUrl ='https://live-meet-site.onrender.com';
 
   useEffect(() => {
-    console.log('MeetingRoom mounted with roomId:', roomId, 'User:', user ? user.id : 'Not loaded');
-    if (!user) {
-      console.log('User not loaded, delaying setup');
+    if (!isLoaded) {
+      console.log('Clerk not loaded, waiting...');
       return;
     }
+    console.log('MeetingRoom mounted with roomId:', roomId, 'User:', user ? user.id : 'Not loaded');
 
     socketRef.current = io(backendUrl, {
       reconnection: true,
@@ -152,7 +152,7 @@ const MeetingRoom = () => {
         streamRef.current = null;
       }
     };
-  }, [roomId, backendUrl, user]);
+  }, [roomId, backendUrl, isLoaded]); // Depend on isLoaded instead of user
 
   const createPeerConnection = (targetSocketId) => {
     console.log(`Creating peer connection for: ${targetSocketId}`);
