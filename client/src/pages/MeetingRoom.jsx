@@ -22,16 +22,22 @@ const MeetingRoom = () => {
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
 
-  // Update this to your deployed backend URL
-  const backendUrl ='https://live-meet-site.onrender.com'; // Adjust based on deployment
+  // Use environment variable for backend URL, fallback to Render
+  const backendUrl ='https://live-meet-site.onrender.com';
 
   useEffect(() => {
-    console.log('MeetingRoom mounted with roomId:', roomId, 'User:', user);
+    console.log('MeetingRoom mounted with roomId:', roomId, 'User:', user ? user.id : 'Not loaded');
+    if (!user) {
+      console.log('User not loaded, delaying setup');
+      return;
+    }
+
     socketRef.current = io(backendUrl, {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      transports: ['websocket'], // Force WebSocket
+      transports: ['websocket'],
+      path: '/socket.io', // Ensure this matches your backend socket path
     });
 
     socketRef.current.on('connect', () => {
@@ -131,7 +137,7 @@ const MeetingRoom = () => {
     });
 
     return () => {
-      console.log('Cleaning up MeetingRoom, User:', user);
+      console.log('Cleaning up MeetingRoom, User:', user ? user.id : 'Not loaded');
       if (socketRef.current) {
         socketRef.current.emit('leave-room', roomId);
         socketRef.current.off();
@@ -146,14 +152,14 @@ const MeetingRoom = () => {
         streamRef.current = null;
       }
     };
-  }, [roomId, backendUrl]); // Re-run if roomId or backendUrl changes
+  }, [roomId, backendUrl, user]); // Re-run if user changes to handle Clerk loading
 
   const createPeerConnection = (targetSocketId) => {
     console.log(`Creating peer connection for: ${targetSocketId}`);
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        // Add TURN server if needed (e.g., from Xirsys or Twilio)
+        // Uncomment and add TURN credentials if needed
         // { urls: 'turn:your-turn-server.com', username: 'user', credential: 'pass' }
       ],
     });
@@ -183,7 +189,7 @@ const MeetingRoom = () => {
         setError(null);
       } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
         setIsConnected(false);
-        setError('Connection lost. Please try again.');
+        setError('Connection lost. Please try again or check network.');
       }
     };
 
@@ -194,7 +200,7 @@ const MeetingRoom = () => {
     try {
       console.log('Requesting media devices');
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: { width: 1280, height: 720 }, // Explicit resolution
         audio: true,
       });
 
@@ -204,19 +210,19 @@ const MeetingRoom = () => {
         console.log('Stream assigned to userVideoRef:', userVideoRef.current.srcObject);
         await userVideoRef.current.play().catch((err) => {
           console.error('Error playing local video:', err);
-          setError('Failed to display local video. Check browser settings or console logs.');
+          setError(`Failed to display local video. Error: ${err.message}. Check browser settings or console.`);
         });
       }
 
       stream.getTracks().forEach((track) => {
-        console.log(`Local track: ${track.kind}, enabled: ${track.enabled}`);
+        console.log(`Local track: ${track.kind}, enabled: ${track.enabled}, readyState: ${track.readyState}`);
       });
 
       setIsStarted(true);
       setError(null);
     } catch (error) {
       console.error('Error accessing media devices:', error);
-      setError('Please allow camera and microphone access. Check browser permissions.');
+      setError(`Please allow camera and microphone access. Error: ${error.message}. Check permissions.`);
     }
   };
 
@@ -226,7 +232,7 @@ const MeetingRoom = () => {
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
         setIsAudioMuted(!audioTrack.enabled);
-        console.log(`Audio ${audioTrack.enabled ? 'unmuted' : 'muted'}`);
+        console.log(`Audio ${audioTrack.enabled ? 'unmuted' : 'muted'}, readyState: ${audioTrack.readyState}`);
       } else {
         console.log('No audio track available');
         setError('No audio device detected.');
@@ -240,7 +246,7 @@ const MeetingRoom = () => {
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         setIsVideoMuted(!videoTrack.enabled);
-        console.log(`Video ${videoTrack.enabled ? 'unmuted' : 'muted'}`);
+        console.log(`Video ${videoTrack.enabled ? 'unmuted' : 'muted'}, readyState: ${videoTrack.readyState}`);
         if (userVideoRef.current) {
           userVideoRef.current.play().catch((err) => {
             console.error('Error re-playing video:', err);
