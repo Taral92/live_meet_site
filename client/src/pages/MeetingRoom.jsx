@@ -22,7 +22,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Drawer,
   AppBar,
   Toolbar,
   Fab,
@@ -1050,7 +1049,165 @@ const MeetingRoom = () => {
                   height: "100%",
                 }}
               >
-                <ChatComponent />
+                {/* Chat Header */}
+                <Box
+                  sx={{
+                    p: 3,
+                    borderBottom: "1px solid #e5e7eb",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    bgcolor: "white",
+                  }}
+                >
+                  <Typography variant="h6" fontWeight="600" color="#1a1a1a">
+                    Chat
+                  </Typography>
+                  <Chip
+                    label={chat.length}
+                    size="small"
+                    sx={{
+                      bgcolor: "#f3f4f6",
+                      color: "#6b7280",
+                      fontSize: "0.75rem",
+                      height: 24,
+                    }}
+                  />
+                </Box>
+
+                {/* Chat Messages */}
+                <Box
+                  sx={{
+                    flex: 1,
+                    overflowY: "auto",
+                    p: 2,
+                    "&::-webkit-scrollbar": {
+                      width: "6px",
+                    },
+                    "&::-webkit-scrollbar-track": {
+                      bgcolor: "transparent",
+                    },
+                    "&::-webkit-scrollbar-thumb": {
+                      bgcolor: "#d1d5db",
+                      borderRadius: "3px",
+                    },
+                  }}
+                >
+                  {chat.length === 0 ? (
+                    <Box
+                      sx={{
+                        textAlign: "center",
+                        py: 8,
+                        color: "#9ca3af",
+                      }}
+                    >
+                      <Chat sx={{ fontSize: 48, opacity: 0.3, mb: 2 }} />
+                      <Typography variant="body2">No messages yet</Typography>
+                      <Typography variant="caption">Start the conversation!</Typography>
+                    </Box>
+                  ) : (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      {chat.map((msg, idx) => {
+                        const isOwnMessage = msg.username === (user?.username || user?.firstName || "Anonymous")
+                        return (
+                          <Box
+                            key={idx}
+                            sx={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: isOwnMessage ? "flex-end" : "flex-start",
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "#6b7280",
+                                mb: 0.5,
+                                px: 1,
+                                fontSize: "0.75rem",
+                              }}
+                            >
+                              {msg.username}
+                            </Typography>
+                            <Box
+                              sx={{
+                                maxWidth: "85%",
+                                p: 2,
+                                borderRadius: 2,
+                                bgcolor: isOwnMessage ? "#1976d2" : "#f3f4f6",
+                                color: isOwnMessage ? "white" : "#1a1a1a",
+                                borderBottomRightRadius: isOwnMessage ? 0.5 : 2,
+                                borderBottomLeftRadius: isOwnMessage ? 2 : 0.5,
+                              }}
+                            >
+                              <Typography variant="body2" sx={{ lineHeight: 1.4 }}>
+                                {msg.message}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        )
+                      })}
+                      <div ref={chatEndRef} />
+                    </Box>
+                  )}
+                </Box>
+
+                {/* Chat Input */}
+                <Box
+                  sx={{
+                    p: 2,
+                    borderTop: "1px solid #e5e7eb",
+                    display: "flex",
+                    gap: 1,
+                    bgcolor: "white",
+                  }}
+                >
+                  <TextField
+                    fullWidth
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Type a message..."
+                    variant="outlined"
+                    size="small"
+                    sx={{
+                      "& .MuiOutlinedInput-root": {
+                        borderRadius: 2,
+                        bgcolor: "#f9fafb",
+                        border: "1px solid #e5e7eb",
+                        "&:hover": {
+                          border: "1px solid #d1d5db",
+                        },
+                        "&.Mui-focused": {
+                          border: "1px solid #1976d2",
+                          bgcolor: "white",
+                        },
+                        "& fieldset": {
+                          border: "none",
+                        },
+                      },
+                    }}
+                  />
+                  <IconButton
+                    onClick={handleSend}
+                    disabled={!message.trim()}
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      bgcolor: message.trim() ? "#1976d2" : "#f3f4f6",
+                      color: message.trim() ? "white" : "#9ca3af",
+                      "&:hover": {
+                        bgcolor: message.trim() ? "#1565c0" : "#e5e7eb",
+                      },
+                      "&:disabled": {
+                        bgcolor: "#f3f4f6",
+                        color: "#9ca3af",
+                      },
+                    }}
+                  >
+                    <Send sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Box>
               </Paper>
             )}
           </Box>
@@ -1074,32 +1231,270 @@ const MeetingRoom = () => {
             </Fab>
           )}
 
-          {/* Mobile Chat Drawer */}
-          <Drawer
-            anchor="bottom"
+          {/* Mobile Chat Modal - Full Screen Approach */}
+          <Dialog
             open={isChatOpen}
             onClose={() => setIsChatOpen(false)}
-            disableBackdropClick={false}
-            disableEscapeKeyDown={false}
-            ModalProps={{
-              keepMounted: true,
-              disableScrollLock: true,
-            }}
+            fullScreen={isMobile}
+            maxWidth="sm"
+            fullWidth
             PaperProps={{
               sx: {
-                height: "80vh",
-                borderTopLeftRadius: 16,
-                borderTopRightRadius: 16,
-                maxHeight: "80vh",
-                overflow: "hidden",
+                ...(isMobile
+                  ? {
+                      margin: 0,
+                      borderRadius: 0,
+                      height: "100vh",
+                      maxHeight: "100vh",
+                    }
+                  : {
+                      borderRadius: 3,
+                      height: "80vh",
+                      maxHeight: "80vh",
+                    }),
               },
             }}
-            SlideProps={{
-              direction: "up",
+            TransitionProps={{
+              keepMounted: true,
             }}
+            disableScrollLock
+            disableRestoreFocus
+            disableAutoFocus
+            disableEnforceFocus
           >
-            <ChatComponent isDrawer />
-          </Drawer>
+            <Box
+              sx={{
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                bgcolor: "white",
+                position: "relative",
+              }}
+            >
+              {/* Chat Header */}
+              <Box
+                sx={{
+                  p: { xs: 2, sm: 3 },
+                  borderBottom: "1px solid #e5e7eb",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  bgcolor: "white",
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  fontWeight="600"
+                  color="#1a1a1a"
+                  sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }}
+                >
+                  Chat
+                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Chip
+                    label={chat.length}
+                    size="small"
+                    sx={{
+                      bgcolor: "#f3f4f6",
+                      color: "#6b7280",
+                      fontSize: "0.75rem",
+                      height: 24,
+                    }}
+                  />
+                  <IconButton
+                    onClick={() => setIsChatOpen(false)}
+                    size="small"
+                    sx={{
+                      bgcolor: "#f3f4f6",
+                      "&:hover": {
+                        bgcolor: "#e5e7eb",
+                      },
+                    }}
+                  >
+                    <Close />
+                  </IconButton>
+                </Box>
+              </Box>
+
+              {/* Chat Messages */}
+              <Box
+                sx={{
+                  flex: 1,
+                  overflowY: "auto",
+                  p: { xs: 1.5, sm: 2 },
+                  "&::-webkit-scrollbar": {
+                    width: "6px",
+                  },
+                  "&::-webkit-scrollbar-track": {
+                    bgcolor: "transparent",
+                  },
+                  "&::-webkit-scrollbar-thumb": {
+                    bgcolor: "#d1d5db",
+                    borderRadius: "3px",
+                  },
+                }}
+              >
+                {chat.length === 0 ? (
+                  <Box
+                    sx={{
+                      textAlign: "center",
+                      py: { xs: 4, sm: 8 },
+                      color: "#9ca3af",
+                    }}
+                  >
+                    <Chat sx={{ fontSize: { xs: 36, sm: 48 }, opacity: 0.3, mb: 2 }} />
+                    <Typography variant="body2" sx={{ fontSize: { xs: "0.85rem", sm: "0.875rem" } }}>
+                      No messages yet
+                    </Typography>
+                    <Typography variant="caption" sx={{ fontSize: { xs: "0.75rem", sm: "0.75rem" } }}>
+                      Start the conversation!
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: { xs: 1.5, sm: 2 } }}>
+                    {chat.map((msg, idx) => {
+                      const isOwnMessage = msg.username === (user?.username || user?.firstName || "Anonymous")
+                      return (
+                        <Box
+                          key={idx}
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: isOwnMessage ? "flex-end" : "flex-start",
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: "#6b7280",
+                              mb: 0.5,
+                              px: 1,
+                              fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                            }}
+                          >
+                            {msg.username}
+                          </Typography>
+                          <Box
+                            sx={{
+                              maxWidth: "85%",
+                              p: { xs: 1.5, sm: 2 },
+                              borderRadius: 2,
+                              bgcolor: isOwnMessage ? "#1976d2" : "#f3f4f6",
+                              color: isOwnMessage ? "white" : "#1a1a1a",
+                              borderBottomRightRadius: isOwnMessage ? 0.5 : 2,
+                              borderBottomLeftRadius: isOwnMessage ? 2 : 0.5,
+                            }}
+                          >
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                lineHeight: 1.4,
+                                fontSize: { xs: "0.85rem", sm: "0.875rem" },
+                              }}
+                            >
+                              {msg.message}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      )
+                    })}
+                    <div ref={chatEndRef} />
+                  </Box>
+                )}
+              </Box>
+
+              {/* Chat Input - Fixed at bottom */}
+              <Box
+                sx={{
+                  p: { xs: 1.5, sm: 2 },
+                  borderTop: "1px solid #e5e7eb",
+                  display: "flex",
+                  gap: 1,
+                  bgcolor: "white",
+                  position: "sticky",
+                  bottom: 0,
+                  zIndex: 1,
+                }}
+              >
+                <TextField
+                  fullWidth
+                  value={message}
+                  onChange={(e) => {
+                    e.stopPropagation()
+                    setMessage(e.target.value)
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleSend()
+                    }
+                  }}
+                  onFocus={(e) => {
+                    e.stopPropagation()
+                  }}
+                  onBlur={(e) => {
+                    e.stopPropagation()
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                  }}
+                  placeholder="Type a message..."
+                  variant="outlined"
+                  size="small"
+                  autoComplete="off"
+                  autoFocus={false}
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      borderRadius: 2,
+                      bgcolor: "#f9fafb",
+                      border: "1px solid #e5e7eb",
+                      fontSize: { xs: "16px", sm: "1rem" }, // 16px prevents zoom on iOS
+                      "&:hover": {
+                        border: "1px solid #d1d5db",
+                      },
+                      "&.Mui-focused": {
+                        border: "1px solid #1976d2",
+                        bgcolor: "white",
+                      },
+                      "& fieldset": {
+                        border: "none",
+                      },
+                      "& input": {
+                        fontSize: { xs: "16px", sm: "1rem" }, // Prevent iOS zoom
+                      },
+                    },
+                  }}
+                />
+                <IconButton
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleSend()
+                  }}
+                  disabled={!message.trim()}
+                  sx={{
+                    width: { xs: 44, sm: 40 },
+                    height: { xs: 44, sm: 40 },
+                    bgcolor: message.trim() ? "#1976d2" : "#f3f4f6",
+                    color: message.trim() ? "white" : "#9ca3af",
+                    flexShrink: 0,
+                    "&:hover": {
+                      bgcolor: message.trim() ? "#1565c0" : "#e5e7eb",
+                    },
+                    "&:disabled": {
+                      bgcolor: "#f3f4f6",
+                      color: "#9ca3af",
+                    },
+                  }}
+                >
+                  <Send sx={{ fontSize: { xs: 20, sm: 18 } }} />
+                </IconButton>
+              </Box>
+            </Box>
+          </Dialog>
         </>
       )}
 
