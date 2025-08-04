@@ -60,7 +60,7 @@ import {
   AttachFile,
 } from '@mui/icons-material';
 
-const backendUrl = 'http://localhost:3000';
+const backendUrl = 'https://live-meet-site.onrender.com';
 
 const MeetingRoom = () => {
   const { roomId } = useParams();
