@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { useParams } from "react-router-dom"
+import { useParams, useNavigate } from "react-router-dom"
 import { io } from "socket.io-client"
 import { useUser } from "@clerk/clerk-react"
+import { UserButton } from "@clerk/clerk-react"
 import {
   Box,
   TextField,
@@ -17,6 +18,10 @@ import {
   CircularProgress,
   useTheme,
   useMediaQuery,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material"
 import {
   Mic,
@@ -28,7 +33,8 @@ import {
   VideoCall,
   Chat,
   Circle,
-  MoreVert,
+  ExitToApp,
+  CallEnd,
 } from "@mui/icons-material"
 
 const backendUrl = "https://live-meet-site.onrender.com"
@@ -36,6 +42,7 @@ const backendUrl = "https://live-meet-site.onrender.com"
 const MeetingRoom = () => {
   const { roomId } = useParams()
   const { user, isLoaded } = useUser()
+  const navigate = useNavigate()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down("md"))
   const isTablet = useMediaQuery(theme.breakpoints.down("lg"))
@@ -55,6 +62,7 @@ const MeetingRoom = () => {
   const [isAudioMuted, setIsAudioMuted] = useState(false)
   const [isVideoMuted, setIsVideoMuted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false)
 
   // Auto scroll chat to bottom
   useEffect(() => {
@@ -193,6 +201,36 @@ const MeetingRoom = () => {
     }
   }
 
+  // Leave meeting function
+  const leaveMeeting = () => {
+    // Stop all tracks
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop())
+    }
+
+    // Close peer connection
+    if (peerConnection.current) {
+      peerConnection.current.close()
+    }
+
+    // Disconnect socket
+    if (socketRef.current) {
+      socketRef.current.disconnect()
+    }
+
+    // Navigate back to home or create meeting page
+    navigate("/")
+  }
+
+  const handleLeaveMeeting = () => {
+    setShowLeaveDialog(true)
+  }
+
+  const confirmLeaveMeeting = () => {
+    setShowLeaveDialog(false)
+    leaveMeeting()
+  }
+
   // Assign local stream to video element when both started and video ref ready
   useEffect(() => {
     if (isStarted && userVideoRef.current && streamRef.current) {
@@ -253,118 +291,162 @@ const MeetingRoom = () => {
     >
       <Container maxWidth="xl">
         {!isStarted ? (
-          <Zoom in timeout={600}>
+          <Box sx={{ position: "relative" }}>
+            {/* User Button for pre-meeting */}
             <Box
               sx={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                minHeight: "80vh",
-                textAlign: "center",
-                gap: 4,
+                position: "absolute",
+                top: -20,
+                right: 0,
+                zIndex: 10,
               }}
             >
+              <UserButton
+                appearance={{
+                  elements: {
+                    avatarBox: {
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "12px",
+                      border: "2px solid #e5e7eb",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                    },
+                    userButtonPopoverCard: {
+                      borderRadius: "12px",
+                      boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+                      border: "1px solid #e5e7eb",
+                    },
+                    userButtonPopoverActionButton: {
+                      borderRadius: "8px",
+                      "&:hover": {
+                        backgroundColor: "#f3f4f6",
+                      },
+                    },
+                    userButtonPopoverActionButtonText: {
+                      color: "#374151",
+                      fontWeight: "500",
+                    },
+                    userButtonPopoverActionButtonIcon: {
+                      color: "#6b7280",
+                    },
+                  },
+                }}
+              />
+            </Box>
+
+            <Zoom in timeout={600}>
               <Box
                 sx={{
-                  width: 120,
-                  height: 120,
-                  borderRadius: "50%",
-                  bgcolor: "white",
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
-                  mb: 2,
+                  minHeight: "80vh",
+                  textAlign: "center",
+                  gap: 4,
                 }}
               >
-                <VideoCall sx={{ fontSize: 60, color: "#1976d2" }} />
-              </Box>
+                <Box
+                  sx={{
+                    width: 120,
+                    height: 120,
+                    borderRadius: "50%",
+                    bgcolor: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+                    mb: 2,
+                  }}
+                >
+                  <VideoCall sx={{ fontSize: 60, color: "#1976d2" }} />
+                </Box>
 
-              <Box>
-                <Typography variant="h4" fontWeight="600" color="#1a1a1a" sx={{ mb: 1 }}>
-                  Join Meeting
-                </Typography>
-                <Typography variant="body1" color="#6b7280" sx={{ mb: 4 }}>
-                  Room: {roomId}
-                </Typography>
-              </Box>
+                <Box>
+                  <Typography variant="h4" fontWeight="600" color="#1a1a1a" sx={{ mb: 1 }}>
+                    Join Meeting
+                  </Typography>
+                  <Typography variant="body1" color="#6b7280" sx={{ mb: 4 }}>
+                    Room: {roomId}
+                  </Typography>
+                </Box>
 
-              {error && (
+                {error && (
+                  <Paper
+                    sx={{
+                      p: 3,
+                      bgcolor: "#fef2f2",
+                      border: "1px solid #fecaca",
+                      borderRadius: 2,
+                      maxWidth: 400,
+                    }}
+                  >
+                    <Typography color="#dc2626">{error}</Typography>
+                  </Paper>
+                )}
+
+                <Button
+                  onClick={startMeeting}
+                  disabled={isLoading}
+                  startIcon={isLoading ? <CircularProgress size={20} /> : <PlayArrow />}
+                  sx={{
+                    px: 6,
+                    py: 2,
+                    borderRadius: 2,
+                    fontSize: "1rem",
+                    fontWeight: "600",
+                    bgcolor: "#1976d2",
+                    color: "white",
+                    textTransform: "none",
+                    boxShadow: "0 2px 8px rgba(25,118,210,0.2)",
+                    "&:hover": {
+                      bgcolor: "#1565c0",
+                      boxShadow: "0 4px 12px rgba(25,118,210,0.3)",
+                    },
+                    "&:disabled": {
+                      bgcolor: "#e5e7eb",
+                      color: "#9ca3af",
+                    },
+                  }}
+                >
+                  {isLoading ? "Starting..." : "Start Meeting"}
+                </Button>
+
                 <Paper
                   sx={{
                     p: 3,
-                    bgcolor: "#fef2f2",
-                    border: "1px solid #fecaca",
+                    bgcolor: "white",
                     borderRadius: 2,
-                    maxWidth: 400,
-                  }}
-                >
-                  <Typography color="#dc2626">{error}</Typography>
-                </Paper>
-              )}
-
-              <Button
-                onClick={startMeeting}
-                disabled={isLoading}
-                startIcon={isLoading ? <CircularProgress size={20} /> : <PlayArrow />}
-                sx={{
-                  px: 6,
-                  py: 2,
-                  borderRadius: 2,
-                  fontSize: "1rem",
-                  fontWeight: "600",
-                  bgcolor: "#1976d2",
-                  color: "white",
-                  textTransform: "none",
-                  boxShadow: "0 2px 8px rgba(25,118,210,0.2)",
-                  "&:hover": {
-                    bgcolor: "#1565c0",
-                    boxShadow: "0 4px 12px rgba(25,118,210,0.3)",
-                  },
-                  "&:disabled": {
-                    bgcolor: "#e5e7eb",
-                    color: "#9ca3af",
-                  },
-                }}
-              >
-                {isLoading ? "Starting..." : "Start Meeting"}
-              </Button>
-
-              <Paper
-                sx={{
-                  p: 3,
-                  bgcolor: "white",
-                  borderRadius: 2,
-                  border: "1px solid #e5e7eb",
-                  maxWidth: 500,
-                }}
-              >
-                <Typography variant="body2" color="#6b7280" sx={{ mb: 2 }}>
-                  Share this link to invite others:
-                </Typography>
-                <Box
-                  sx={{
-                    p: 2,
-                    bgcolor: "#f9fafb",
-                    borderRadius: 1,
                     border: "1px solid #e5e7eb",
-                    fontFamily: "monospace",
-                    fontSize: "0.875rem",
-                    color: "#374151",
-                    wordBreak: "break-all",
+                    maxWidth: 500,
                   }}
                 >
-                  {window.location.href}
-                </Box>
-              </Paper>
-            </Box>
-          </Zoom>
+                  <Typography variant="body2" color="#6b7280" sx={{ mb: 2 }}>
+                    Share this link to invite others:
+                  </Typography>
+                  <Box
+                    sx={{
+                      p: 2,
+                      bgcolor: "#f9fafb",
+                      borderRadius: 1,
+                      border: "1px solid #e5e7eb",
+                      fontFamily: "monospace",
+                      fontSize: "0.875rem",
+                      color: "#374151",
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {window.location.href}
+                  </Box>
+                </Paper>
+              </Box>
+            </Zoom>
+          </Box>
         ) : (
           <Box sx={{ display: "flex", gap: 3, height: "calc(100vh - 100px)" }}>
             {/* Main Video Area */}
             <Box sx={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
-              {/* Header */}
+              {/* Header with User Button and Leave Button */}
               <Paper
                 sx={{
                   p: 3,
@@ -378,7 +460,7 @@ const MeetingRoom = () => {
               >
                 <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                   <Typography variant="h6" fontWeight="600" color="#1a1a1a">
-                    Taral's Room
+                    Meeting Room
                   </Typography>
                   <Typography variant="body2" color="#6b7280">
                     {roomId}
@@ -396,9 +478,62 @@ const MeetingRoom = () => {
                       {isConnected ? "Connected" : "Waiting for others"}
                     </Typography>
                   </Box>
-                  <IconButton size="small">
-                    <MoreVert />
-                  </IconButton>
+
+                  {/* Leave Meeting Button */}
+                  <Button
+                    onClick={handleLeaveMeeting}
+                    startIcon={<CallEnd />}
+                    sx={{
+                      px: 3,
+                      py: 1,
+                      borderRadius: 2,
+                      fontSize: "0.875rem",
+                      fontWeight: "600",
+                      bgcolor: "#dc2626",
+                      color: "white",
+                      textTransform: "none",
+                      "&:hover": {
+                        bgcolor: "#b91c1c",
+                        transform: "translateY(-1px)",
+                      },
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    Leave
+                  </Button>
+
+                  {/* User Button */}
+                  <UserButton
+                    appearance={{
+                      elements: {
+                        avatarBox: {
+                          width: "36px",
+                          height: "36px",
+                          borderRadius: "10px",
+                          border: "2px solid #e5e7eb",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                        },
+                        userButtonPopoverCard: {
+                          borderRadius: "12px",
+                          boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+                          border: "1px solid #e5e7eb",
+                        },
+                        userButtonPopoverActionButton: {
+                          borderRadius: "8px",
+                          "&:hover": {
+                            backgroundColor: "#f3f4f6",
+                          },
+                        },
+                        userButtonPopoverActionButtonText: {
+                          color: "#374151",
+                          fontWeight: "500",
+                        },
+                        userButtonPopoverActionButtonIcon: {
+                          color: "#6b7280",
+                        },
+                      },
+                    }}
+                  />
                 </Box>
               </Paper>
 
@@ -752,6 +887,63 @@ const MeetingRoom = () => {
             </Paper>
           </Box>
         )}
+
+        {/* Leave Meeting Confirmation Dialog */}
+        <Dialog
+          open={showLeaveDialog}
+          onClose={() => setShowLeaveDialog(false)}
+          PaperProps={{
+            sx: {
+              borderRadius: 3,
+              p: 2,
+              minWidth: 400,
+            },
+          }}
+        >
+          <DialogTitle sx={{ textAlign: "center", pb: 2 }}>
+            <ExitToApp sx={{ fontSize: 48, color: "#dc2626", mb: 2 }} />
+            <Typography variant="h6" fontWeight="600" color="#1a1a1a">
+              Leave Meeting?
+            </Typography>
+          </DialogTitle>
+          <DialogContent sx={{ textAlign: "center", pb: 2 }}>
+            <Typography variant="body1" color="#6b7280">
+              Are you sure you want to leave this meeting? This action cannot be undone.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ justifyContent: "center", gap: 2 }}>
+            <Button
+              onClick={() => setShowLeaveDialog(false)}
+              sx={{
+                px: 4,
+                py: 1,
+                borderRadius: 2,
+                color: "#6b7280",
+                border: "1px solid #e5e7eb",
+                "&:hover": {
+                  bgcolor: "#f9fafb",
+                },
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmLeaveMeeting}
+              sx={{
+                px: 4,
+                py: 1,
+                borderRadius: 2,
+                bgcolor: "#dc2626",
+                color: "white",
+                "&:hover": {
+                  bgcolor: "#b91c1c",
+                },
+              }}
+            >
+              Leave Meeting
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Container>
     </Box>
   )
