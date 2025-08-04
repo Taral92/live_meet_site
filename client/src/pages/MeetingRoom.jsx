@@ -427,15 +427,19 @@ const MeetingRoom = () => {
           gap: 1,
           bgcolor: "white",
         }}
+        onClick={(e) => e.stopPropagation()}
       >
         <TextField
           fullWidth
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyPress={handleKeyPress}
+          onFocus={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
           placeholder="Type a message..."
           variant="outlined"
           size="small"
+          autoComplete="off"
           sx={{
             "& .MuiOutlinedInput-root": {
               borderRadius: 2,
@@ -456,7 +460,10 @@ const MeetingRoom = () => {
           }}
         />
         <IconButton
-          onClick={handleSend}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleSend()
+          }}
           disabled={!message.trim()}
           sx={{
             width: { xs: 44, sm: 40 },
@@ -1072,12 +1079,23 @@ const MeetingRoom = () => {
             anchor="bottom"
             open={isChatOpen}
             onClose={() => setIsChatOpen(false)}
+            disableBackdropClick={false}
+            disableEscapeKeyDown={false}
+            ModalProps={{
+              keepMounted: true,
+              disableScrollLock: true,
+            }}
             PaperProps={{
               sx: {
                 height: "80vh",
                 borderTopLeftRadius: 16,
                 borderTopRightRadius: 16,
+                maxHeight: "80vh",
+                overflow: "hidden",
               },
+            }}
+            SlideProps={{
+              direction: "up",
             }}
           >
             <ChatComponent isDrawer />
