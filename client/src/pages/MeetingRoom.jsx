@@ -10,18 +10,13 @@ import {
   Button,
   IconButton,
   Typography,
-  Card,
-  CardContent,
   Paper,
   Chip,
-  Avatar,
-  Divider,
   Container,
-  Grid,
-  Badge,
-  Fade,
   Zoom,
   CircularProgress,
+  useTheme,
+  useMediaQuery,
 } from "@mui/material"
 import {
   Mic,
@@ -30,10 +25,10 @@ import {
   VideocamOff,
   Send,
   PlayArrow,
-  Person,
   VideoCall,
   Chat,
   Circle,
+  MoreVert,
 } from "@mui/icons-material"
 
 const backendUrl = "https://live-meet-site.onrender.com"
@@ -41,6 +36,10 @@ const backendUrl = "https://live-meet-site.onrender.com"
 const MeetingRoom = () => {
   const { roomId } = useParams()
   const { user, isLoaded } = useUser()
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"))
+  const isTablet = useMediaQuery(theme.breakpoints.down("lg"))
+
   const userVideoRef = useRef(null)
   const remoteVideoRef = useRef(null)
   const peerConnection = useRef(null)
@@ -247,511 +246,512 @@ const MeetingRoom = () => {
     <Box
       sx={{
         minHeight: "100vh",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-        py: 4,
+        bgcolor: "#f8f9fa",
+        py: { xs: 2, sm: 3, md: 4 },
+        px: { xs: 1, sm: 2 },
       }}
     >
       <Container maxWidth="xl">
-        <Fade in timeout={800}>
-          <Paper
-            elevation={24}
-            sx={{
-              borderRadius: 4,
-              overflow: "hidden",
-              background: "rgba(255, 255, 255, 0.95)",
-              backdropFilter: "blur(20px)",
-            }}
-          >
-            {/* Header */}
+        {!isStarted ? (
+          <Zoom in timeout={600}>
             <Box
               sx={{
-                background: "linear-gradient(90deg, #667eea 0%, #764ba2 100%)",
-                color: "white",
-                p: 3,
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
-                justifyContent: "space-between",
+                justifyContent: "center",
+                minHeight: "80vh",
+                textAlign: "center",
+                gap: 4,
               }}
             >
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                <VideoCall sx={{ fontSize: 32 }} />
-                <Box>
-                  <Typography variant="h4" fontWeight="bold">
-                    Meeting Room
-                  </Typography>
-                  <Typography variant="subtitle1" sx={{ opacity: 0.9 }}>
-                    Room ID: {roomId}
-                  </Typography>
-                </Box>
-              </Box>
-              <Chip
-                icon={<Circle sx={{ fontSize: 12 }} />}
-                label={isConnected ? "Connected" : isStarted ? "Waiting for participants" : "Not started"}
-                color={isConnected ? "success" : isStarted ? "warning" : "default"}
+              <Box
                 sx={{
-                  bgcolor: isConnected
-                    ? "rgba(76, 175, 80, 0.2)"
-                    : isStarted
-                      ? "rgba(255, 152, 0, 0.2)"
-                      : "rgba(255, 255, 255, 0.2)",
-                  color: "white",
-                  fontWeight: "bold",
+                  width: 120,
+                  height: 120,
+                  borderRadius: "50%",
+                  bgcolor: "white",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+                  mb: 2,
                 }}
-              />
-            </Box>
+              >
+                <VideoCall sx={{ fontSize: 60, color: "#1976d2" }} />
+              </Box>
 
-            <Box sx={{ p: 4 }}>
+              <Box>
+                <Typography variant="h4" fontWeight="600" color="#1a1a1a" sx={{ mb: 1 }}>
+                  Join Meeting
+                </Typography>
+                <Typography variant="body1" color="#6b7280" sx={{ mb: 4 }}>
+                  Room: {roomId}
+                </Typography>
+              </Box>
+
               {error && (
-                <Fade in>
-                  <Paper
-                    sx={{
-                      p: 2,
-                      mb: 3,
-                      bgcolor: "error.light",
-                      color: "error.contrastText",
-                      borderRadius: 2,
-                    }}
-                  >
-                    <Typography>{error}</Typography>
-                  </Paper>
-                </Fade>
+                <Paper
+                  sx={{
+                    p: 3,
+                    bgcolor: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    borderRadius: 2,
+                    maxWidth: 400,
+                  }}
+                >
+                  <Typography color="#dc2626">{error}</Typography>
+                </Paper>
               )}
 
-              {!isStarted ? (
-                <Zoom in timeout={600}>
+              <Button
+                onClick={startMeeting}
+                disabled={isLoading}
+                startIcon={isLoading ? <CircularProgress size={20} /> : <PlayArrow />}
+                sx={{
+                  px: 6,
+                  py: 2,
+                  borderRadius: 2,
+                  fontSize: "1rem",
+                  fontWeight: "600",
+                  bgcolor: "#1976d2",
+                  color: "white",
+                  textTransform: "none",
+                  boxShadow: "0 2px 8px rgba(25,118,210,0.2)",
+                  "&:hover": {
+                    bgcolor: "#1565c0",
+                    boxShadow: "0 4px 12px rgba(25,118,210,0.3)",
+                  },
+                  "&:disabled": {
+                    bgcolor: "#e5e7eb",
+                    color: "#9ca3af",
+                  },
+                }}
+              >
+                {isLoading ? "Starting..." : "Start Meeting"}
+              </Button>
+
+              <Paper
+                sx={{
+                  p: 3,
+                  bgcolor: "white",
+                  borderRadius: 2,
+                  border: "1px solid #e5e7eb",
+                  maxWidth: 500,
+                }}
+              >
+                <Typography variant="body2" color="#6b7280" sx={{ mb: 2 }}>
+                  Share this link to invite others:
+                </Typography>
+                <Box
+                  sx={{
+                    p: 2,
+                    bgcolor: "#f9fafb",
+                    borderRadius: 1,
+                    border: "1px solid #e5e7eb",
+                    fontFamily: "monospace",
+                    fontSize: "0.875rem",
+                    color: "#374151",
+                    wordBreak: "break-all",
+                  }}
+                >
+                  {window.location.href}
+                </Box>
+              </Paper>
+            </Box>
+          </Zoom>
+        ) : (
+          <Box sx={{ display: "flex", gap: 3, height: "calc(100vh - 100px)" }}>
+            {/* Main Video Area */}
+            <Box sx={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+              {/* Header */}
+              <Paper
+                sx={{
+                  p: 3,
+                  bgcolor: "white",
+                  borderRadius: 2,
+                  border: "1px solid #e5e7eb",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <Typography variant="h6" fontWeight="600" color="#1a1a1a">
+                    Taral's Room
+                  </Typography>
+                  <Typography variant="body2" color="#6b7280">
+                    {roomId}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <Circle
+                      sx={{
+                        fontSize: 8,
+                        color: isConnected ? "#10b981" : "#f59e0b",
+                      }}
+                    />
+                    <Typography variant="body2" color="#6b7280">
+                      {isConnected ? "Connected" : "Waiting for others"}
+                    </Typography>
+                  </Box>
+                  <IconButton size="small">
+                    <MoreVert />
+                  </IconButton>
+                </Box>
+              </Paper>
+
+              {/* Video Grid */}
+              <Box sx={{ flex: 1, display: "flex", gap: 2 }}>
+                {/* Local Video */}
+                <Paper
+                  sx={{
+                    flex: 1,
+                    bgcolor: "white",
+                    borderRadius: 2,
+                    border: "1px solid #e5e7eb",
+                    overflow: "hidden",
+                    position: "relative",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      top: 16,
+                      left: 16,
+                      zIndex: 2,
+                    }}
+                  >
+                    <Chip
+                      label="You"
+                      size="small"
+                      sx={{
+                        bgcolor: "rgba(0,0,0,0.7)",
+                        color: "white",
+                        fontSize: "0.75rem",
+                        height: 24,
+                      }}
+                    />
+                  </Box>
+
+                  <video
+                    ref={userVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      background: "#000",
+                    }}
+                  />
+
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      bottom: 16,
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      display: "flex",
+                      gap: 1,
+                    }}
+                  >
+                    <IconButton
+                      onClick={toggleAudio}
+                      sx={{
+                        width: 44,
+                        height: 44,
+                        bgcolor: isAudioMuted ? "#dc2626" : "rgba(255,255,255,0.9)",
+                        color: isAudioMuted ? "white" : "#374151",
+                        "&:hover": {
+                          bgcolor: isAudioMuted ? "#b91c1c" : "white",
+                        },
+                      }}
+                    >
+                      {isAudioMuted ? <MicOff sx={{ fontSize: 20 }} /> : <Mic sx={{ fontSize: 20 }} />}
+                    </IconButton>
+                    <IconButton
+                      onClick={toggleVideo}
+                      sx={{
+                        width: 44,
+                        height: 44,
+                        bgcolor: isVideoMuted ? "#dc2626" : "rgba(255,255,255,0.9)",
+                        color: isVideoMuted ? "white" : "#374151",
+                        "&:hover": {
+                          bgcolor: isVideoMuted ? "#b91c1c" : "white",
+                        },
+                      }}
+                    >
+                      {isVideoMuted ? <VideocamOff sx={{ fontSize: 20 }} /> : <Videocam sx={{ fontSize: 20 }} />}
+                    </IconButton>
+                  </Box>
+                </Paper>
+
+                {/* Remote Video */}
+                <Paper
+                  sx={{
+                    flex: 1,
+                    bgcolor: "white",
+                    borderRadius: 2,
+                    border: "1px solid #e5e7eb",
+                    overflow: "hidden",
+                    position: "relative",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      top: 16,
+                      left: 16,
+                      zIndex: 2,
+                    }}
+                  >
+                    <Chip
+                      label={isConnected ? "Participant" : "Waiting..."}
+                      size="small"
+                      sx={{
+                        bgcolor: "rgba(0,0,0,0.7)",
+                        color: "white",
+                        fontSize: "0.75rem",
+                        height: 24,
+                      }}
+                    />
+                  </Box>
+
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      background: "#000",
+                    }}
+                  />
+
+                  {!isConnected && (
+                    <Box
+                      sx={{
+                        position: "absolute",
+                        top: "50%",
+                        left: "50%",
+                        transform: "translate(-50%, -50%)",
+                        textAlign: "center",
+                        color: "white",
+                      }}
+                    >
+                      <CircularProgress sx={{ color: "white", mb: 2 }} size={40} />
+                      <Typography variant="body2">Waiting for participant...</Typography>
+                    </Box>
+                  )}
+                </Paper>
+              </Box>
+
+              {/* Share Link */}
+              {!isConnected && (
+                <Paper
+                  sx={{
+                    p: 3,
+                    bgcolor: "#eff6ff",
+                    border: "1px solid #bfdbfe",
+                    borderRadius: 2,
+                  }}
+                >
+                  <Typography variant="body2" color="#1e40af" sx={{ mb: 1, fontWeight: 500 }}>
+                    Invite others to join
+                  </Typography>
+                  <Box
+                    sx={{
+                      p: 2,
+                      bgcolor: "white",
+                      borderRadius: 1,
+                      border: "1px solid #bfdbfe",
+                      fontFamily: "monospace",
+                      fontSize: "0.875rem",
+                      color: "#374151",
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {window.location.href}
+                  </Box>
+                </Paper>
+              )}
+            </Box>
+
+            {/* Chat Section - Preply Style */}
+            <Paper
+              sx={{
+                width: { xs: "100%", lg: 360 },
+                bgcolor: "white",
+                borderRadius: 2,
+                border: "1px solid #e5e7eb",
+                display: "flex",
+                flexDirection: "column",
+                height: "100%",
+              }}
+            >
+              {/* Chat Header */}
+              <Box
+                sx={{
+                  p: 3,
+                  borderBottom: "1px solid #e5e7eb",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Typography variant="h6" fontWeight="600" color="#1a1a1a">
+                  Chat
+                </Typography>
+                <Chip
+                  label={chat.length}
+                  size="small"
+                  sx={{
+                    bgcolor: "#f3f4f6",
+                    color: "#6b7280",
+                    fontSize: "0.75rem",
+                    height: 24,
+                  }}
+                />
+              </Box>
+
+              {/* Chat Messages */}
+              <Box
+                sx={{
+                  flex: 1,
+                  overflowY: "auto",
+                  p: 2,
+                  "&::-webkit-scrollbar": {
+                    width: "6px",
+                  },
+                  "&::-webkit-scrollbar-track": {
+                    bgcolor: "transparent",
+                  },
+                  "&::-webkit-scrollbar-thumb": {
+                    bgcolor: "#d1d5db",
+                    borderRadius: "3px",
+                  },
+                }}
+              >
+                {chat.length === 0 ? (
                   <Box
                     sx={{
                       textAlign: "center",
                       py: 8,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: 4,
+                      color: "#9ca3af",
                     }}
                   >
-                    <Avatar
-                      sx={{
-                        width: 120,
-                        height: 120,
-                        bgcolor: "primary.main",
-                        mb: 2,
-                      }}
-                    >
-                      <VideoCall sx={{ fontSize: 60 }} />
-                    </Avatar>
-
-                    <Typography variant="h5" color="text.secondary" sx={{ mb: 2 }}>
-                      Ready to join the meeting?
-                    </Typography>
-
-                    <Button
-                      onClick={startMeeting}
-                      variant="contained"
-                      size="large"
-                      disabled={isLoading}
-                      startIcon={isLoading ? <CircularProgress size={20} /> : <PlayArrow />}
-                      sx={{
-                        px: 6,
-                        py: 2,
-                        borderRadius: 3,
-                        fontSize: "1.1rem",
-                        fontWeight: "bold",
-                        background: "linear-gradient(45deg, #667eea 30%, #764ba2 90%)",
-                        boxShadow: "0 8px 32px rgba(102, 126, 234, 0.3)",
-                        "&:hover": {
-                          transform: "translateY(-2px)",
-                          boxShadow: "0 12px 40px rgba(102, 126, 234, 0.4)",
-                        },
-                        transition: "all 0.3s ease",
-                      }}
-                    >
-                      {isLoading ? "Starting..." : "Start Meeting"}
-                    </Button>
-
-                    <Paper
-                      sx={{
-                        p: 3,
-                        bgcolor: "grey.50",
-                        borderRadius: 2,
-                        maxWidth: 500,
-                        border: "1px solid",
-                        borderColor: "grey.200",
-                      }}
-                    >
-                      <Typography color="text.secondary" variant="body2">
-                        💡 <strong>Tip:</strong> Share this link with others to join the meeting:
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          mt: 1,
-                          p: 1,
-                          bgcolor: "white",
-                          borderRadius: 1,
-                          fontFamily: "monospace",
-                          fontSize: "0.85rem",
-                          wordBreak: "break-all",
-                        }}
-                      >
-                        {window.location.href}
-                      </Typography>
-                    </Paper>
+                    <Chat sx={{ fontSize: 48, opacity: 0.3, mb: 2 }} />
+                    <Typography variant="body2">No messages yet</Typography>
+                    <Typography variant="caption">Start the conversation!</Typography>
                   </Box>
-                </Zoom>
-              ) : (
-                <Grid container spacing={4}>
-                  {/* Video Section */}
-                  <Grid item xs={12} lg={8}>
-                    <Grid container spacing={3}>
-                      {/* Local Video */}
-                      <Grid item xs={12} md={6}>
-                        <Fade in timeout={1000}>
-                          <Card
-                            elevation={8}
-                            sx={{
-                              borderRadius: 3,
-                              overflow: "hidden",
-                              position: "relative",
-                              background: "linear-gradient(145deg, #f0f0f0, #ffffff)",
-                            }}
-                          >
-                            <CardContent sx={{ p: 0, position: "relative" }}>
-                              <Box
-                                sx={{
-                                  position: "absolute",
-                                  top: 12,
-                                  left: 12,
-                                  zIndex: 2,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 1,
-                                }}
-                              >
-                                <Chip
-                                  icon={<Person sx={{ fontSize: 16 }} />}
-                                  label="You"
-                                  size="small"
-                                  sx={{
-                                    bgcolor: "rgba(0, 0, 0, 0.7)",
-                                    color: "white",
-                                    fontWeight: "bold",
-                                  }}
-                                />
-                              </Box>
-
-                              <video
-                                ref={userVideoRef}
-                                autoPlay
-                                playsInline
-                                muted
-                                style={{
-                                  width: "100%",
-                                  height: "280px",
-                                  objectFit: "cover",
-                                  background: "#000",
-                                }}
-                              />
-
-                              <Box
-                                sx={{
-                                  position: "absolute",
-                                  bottom: 12,
-                                  left: "50%",
-                                  transform: "translateX(-50%)",
-                                  display: "flex",
-                                  gap: 1,
-                                }}
-                              >
-                                <IconButton
-                                  onClick={toggleAudio}
-                                  sx={{
-                                    bgcolor: isAudioMuted ? "error.main" : "rgba(255, 255, 255, 0.9)",
-                                    color: isAudioMuted ? "white" : "primary.main",
-                                    "&:hover": {
-                                      bgcolor: isAudioMuted ? "error.dark" : "white",
-                                      transform: "scale(1.1)",
-                                    },
-                                    transition: "all 0.2s ease",
-                                  }}
-                                >
-                                  {isAudioMuted ? <MicOff /> : <Mic />}
-                                </IconButton>
-                                <IconButton
-                                  onClick={toggleVideo}
-                                  sx={{
-                                    bgcolor: isVideoMuted ? "error.main" : "rgba(255, 255, 255, 0.9)",
-                                    color: isVideoMuted ? "white" : "primary.main",
-                                    "&:hover": {
-                                      bgcolor: isVideoMuted ? "error.dark" : "white",
-                                      transform: "scale(1.1)",
-                                    },
-                                    transition: "all 0.2s ease",
-                                  }}
-                                >
-                                  {isVideoMuted ? <VideocamOff /> : <Videocam />}
-                                </IconButton>
-                              </Box>
-                            </CardContent>
-                          </Card>
-                        </Fade>
-                      </Grid>
-
-                      {/* Remote Video */}
-                      <Grid item xs={12} md={6}>
-                        <Fade in timeout={1200}>
-                          <Card
-                            elevation={8}
-                            sx={{
-                              borderRadius: 3,
-                              overflow: "hidden",
-                              position: "relative",
-                              background: "linear-gradient(145deg, #f0f0f0, #ffffff)",
-                            }}
-                          >
-                            <CardContent sx={{ p: 0, position: "relative" }}>
-                              <Box
-                                sx={{
-                                  position: "absolute",
-                                  top: 12,
-                                  left: 12,
-                                  zIndex: 2,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 1,
-                                }}
-                              >
-                                <Badge
-                                  color={isConnected ? "success" : "default"}
-                                  variant="dot"
-                                  sx={{
-                                    "& .MuiBadge-dot": {
-                                      width: 8,
-                                      height: 8,
-                                    },
-                                  }}
-                                >
-                                  <Chip
-                                    icon={<Person sx={{ fontSize: 16 }} />}
-                                    label={isConnected ? "Participant" : "Waiting..."}
-                                    size="small"
-                                    sx={{
-                                      bgcolor: "rgba(0, 0, 0, 0.7)",
-                                      color: "white",
-                                      fontWeight: "bold",
-                                    }}
-                                  />
-                                </Badge>
-                              </Box>
-
-                              <video
-                                ref={remoteVideoRef}
-                                autoPlay
-                                playsInline
-                                style={{
-                                  width: "100%",
-                                  height: "280px",
-                                  objectFit: "cover",
-                                  background: "#000",
-                                }}
-                              />
-
-                              {!isConnected && (
-                                <Box
-                                  sx={{
-                                    position: "absolute",
-                                    top: "50%",
-                                    left: "50%",
-                                    transform: "translate(-50%, -50%)",
-                                    textAlign: "center",
-                                    color: "white",
-                                  }}
-                                >
-                                  <CircularProgress sx={{ color: "white", mb: 2 }} />
-                                  <Typography variant="body2">Waiting for participant...</Typography>
-                                </Box>
-                              )}
-                            </CardContent>
-                          </Card>
-                        </Fade>
-                      </Grid>
-                    </Grid>
-
-                    {!isConnected && (
-                      <Fade in timeout={1400}>
-                        <Paper
-                          sx={{
-                            mt: 3,
-                            p: 3,
-                            bgcolor: "info.light",
-                            color: "info.contrastText",
-                            borderRadius: 2,
-                            textAlign: "center",
-                          }}
-                        >
-                          <Typography variant="body1" sx={{ mb: 1 }}>
-                            🔗 <strong>Share this meeting link:</strong>
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              p: 1,
-                              bgcolor: "rgba(255, 255, 255, 0.2)",
-                              borderRadius: 1,
-                              fontFamily: "monospace",
-                              wordBreak: "break-all",
-                            }}
-                          >
-                            {window.location.href}
-                          </Typography>
-                        </Paper>
-                      </Fade>
-                    )}
-                  </Grid>
-
-                  {/* Chat Section */}
-                  <Grid item xs={12} lg={4}>
-                    <Fade in timeout={1600}>
-                      <Card
-                        elevation={8}
-                        sx={{
-                          height: 500,
-                          borderRadius: 3,
-                          display: "flex",
-                          flexDirection: "column",
-                          background: "linear-gradient(145deg, #ffffff, #f8f9fa)",
-                        }}
-                      >
+                ) : (
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    {chat.map((msg, idx) => {
+                      const isOwnMessage = msg.username === (user?.username || user?.firstName || "Anonymous")
+                      return (
                         <Box
+                          key={idx}
                           sx={{
-                            p: 2,
-                            bgcolor: "primary.main",
-                            color: "white",
                             display: "flex",
-                            alignItems: "center",
-                            gap: 1,
+                            flexDirection: "column",
+                            alignItems: isOwnMessage ? "flex-end" : "flex-start",
                           }}
                         >
-                          <Chat />
-                          <Typography variant="h6" fontWeight="bold">
-                            Chat
-                          </Typography>
-                          <Chip
-                            label={chat.length}
-                            size="small"
+                          <Typography
+                            variant="caption"
                             sx={{
-                              bgcolor: "rgba(255, 255, 255, 0.2)",
-                              color: "white",
-                              ml: "auto",
-                            }}
-                          />
-                        </Box>
-
-                        <Box
-                          sx={{
-                            flex: 1,
-                            overflowY: "auto",
-                            p: 2,
-                            bgcolor: "grey.50",
-                            "&::-webkit-scrollbar": {
-                              width: "6px",
-                            },
-                            "&::-webkit-scrollbar-track": {
-                              bgcolor: "transparent",
-                            },
-                            "&::-webkit-scrollbar-thumb": {
-                              bgcolor: "grey.300",
-                              borderRadius: "3px",
-                            },
-                          }}
-                        >
-                          {chat.length === 0 ? (
-                            <Box
-                              sx={{
-                                textAlign: "center",
-                                color: "text.secondary",
-                                mt: 4,
-                              }}
-                            >
-                              <Chat sx={{ fontSize: 48, opacity: 0.3, mb: 2 }} />
-                              <Typography variant="body2">No messages yet. Start the conversation!</Typography>
-                            </Box>
-                          ) : (
-                            chat.map((msg, idx) => (
-                              <Fade in key={idx} timeout={300}>
-                                <Paper
-                                  sx={{
-                                    p: 2,
-                                    mb: 2,
-                                    borderRadius: 2,
-                                    bgcolor:
-                                      msg.username === (user?.username || user?.firstName || "Anonymous")
-                                        ? "primary.light"
-                                        : "white",
-                                    color:
-                                      msg.username === (user?.username || user?.firstName || "Anonymous")
-                                        ? "primary.contrastText"
-                                        : "text.primary",
-                                    ml: msg.username === (user?.username || user?.firstName || "Anonymous") ? 2 : 0,
-                                    mr: msg.username === (user?.username || user?.firstName || "Anonymous") ? 0 : 2,
-                                  }}
-                                >
-                                  <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                                    {msg.username}
-                                  </Typography>
-                                  <Typography variant="body2" sx={{ mt: 0.5 }}>
-                                    {msg.message}
-                                  </Typography>
-                                </Paper>
-                              </Fade>
-                            ))
-                          )}
-                          <div ref={chatEndRef} />
-                        </Box>
-
-                        <Divider />
-
-                        <Box sx={{ p: 2, display: "flex", gap: 1 }}>
-                          <TextField
-                            fullWidth
-                            value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            onKeyPress={handleKeyPress}
-                            placeholder="Type your message..."
-                            variant="outlined"
-                            size="small"
-                            sx={{
-                              "& .MuiOutlinedInput-root": {
-                                borderRadius: 2,
-                              },
-                            }}
-                          />
-                          <IconButton
-                            onClick={handleSend}
-                            disabled={!message.trim()}
-                            sx={{
-                              bgcolor: "primary.main",
-                              color: "white",
-                              "&:hover": {
-                                bgcolor: "primary.dark",
-                                transform: "scale(1.05)",
-                              },
-                              "&:disabled": {
-                                bgcolor: "grey.300",
-                              },
-                              transition: "all 0.2s ease",
+                              color: "#6b7280",
+                              mb: 0.5,
+                              px: 1,
                             }}
                           >
-                            <Send />
-                          </IconButton>
+                            {msg.username}
+                          </Typography>
+                          <Box
+                            sx={{
+                              maxWidth: "80%",
+                              p: 2,
+                              borderRadius: 2,
+                              bgcolor: isOwnMessage ? "#1976d2" : "#f3f4f6",
+                              color: isOwnMessage ? "white" : "#1a1a1a",
+                              borderBottomRightRadius: isOwnMessage ? 0.5 : 2,
+                              borderBottomLeftRadius: isOwnMessage ? 2 : 0.5,
+                            }}
+                          >
+                            <Typography variant="body2" sx={{ lineHeight: 1.4 }}>
+                              {msg.message}
+                            </Typography>
+                          </Box>
                         </Box>
-                      </Card>
-                    </Fade>
-                  </Grid>
-                </Grid>
-              )}
-            </Box>
-          </Paper>
-        </Fade>
+                      )
+                    })}
+                    <div ref={chatEndRef} />
+                  </Box>
+                )}
+              </Box>
+
+              {/* Chat Input */}
+              <Box
+                sx={{
+                  p: 2,
+                  borderTop: "1px solid #e5e7eb",
+                  display: "flex",
+                  gap: 1,
+                }}
+              >
+                <TextField
+                  fullWidth
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Type a message..."
+                  variant="outlined"
+                  size="small"
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      borderRadius: 2,
+                      bgcolor: "#f9fafb",
+                      border: "1px solid #e5e7eb",
+                      "&:hover": {
+                        border: "1px solid #d1d5db",
+                      },
+                      "&.Mui-focused": {
+                        border: "1px solid #1976d2",
+                        bgcolor: "white",
+                      },
+                      "& fieldset": {
+                        border: "none",
+                      },
+                    },
+                  }}
+                />
+                <IconButton
+                  onClick={handleSend}
+                  disabled={!message.trim()}
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    bgcolor: message.trim() ? "#1976d2" : "#f3f4f6",
+                    color: message.trim() ? "white" : "#9ca3af",
+                    "&:hover": {
+                      bgcolor: message.trim() ? "#1565c0" : "#e5e7eb",
+                    },
+                    "&:disabled": {
+                      bgcolor: "#f3f4f6",
+                      color: "#9ca3af",
+                    },
+                  }}
+                >
+                  <Send sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Box>
+            </Paper>
+          </Box>
+        )}
       </Container>
     </Box>
   )
