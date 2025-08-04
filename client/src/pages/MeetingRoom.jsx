@@ -891,6 +891,8 @@ const MeetingRoom = () => {
                       background: "#000",
                       cursor: "pointer",
                       transform: "scaleX(-1)",
+                      transformOrigin: "left",
+                      
                     }}
                   />
 
