@@ -4,13 +4,29 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { v4 as uuidv4 } from "uuid"
 import { UserButton } from "@clerk/clerk-react"
-import { Box, Button, Typography, Paper, Container, IconButton, Snackbar, Alert, Zoom, Fade } from "@mui/material"
+import { 
+  Box, 
+  Button, 
+  Typography, 
+  Paper, 
+  Container, 
+  IconButton, 
+  Snackbar, 
+  Alert, 
+  Zoom, 
+  Fade,
+  useTheme,
+  useMediaQuery 
+} from "@mui/material"
 import { Add, ContentCopy, VideoCall, Link as LinkIcon } from "@mui/icons-material"
 
 const CreateMeeting = () => {
   const [meetingLink, setMeetingLink] = useState("")
   const [showCopyAlert, setShowCopyAlert] = useState(false)
   const navigate = useNavigate()
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const isTablet = useMediaQuery(theme.breakpoints.down('md'))
 
   const handleCreateMeeting = () => {
     const meetingId = uuidv4()
@@ -32,18 +48,16 @@ const CreateMeeting = () => {
         minHeight: "100vh",
         bgcolor: "#f8f9fa",
         position: "relative",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       {/* Header with User Button */}
       <Box
         sx={{
           position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          p: 3,
-          display: "flex",
-          justifyContent: "flex-end",
+          top: { xs: 16, sm: 24 },
+          right: { xs: 16, sm: 24 },
           zIndex: 10,
         }}
       >
@@ -51,8 +65,8 @@ const CreateMeeting = () => {
           appearance={{
             elements: {
               avatarBox: {
-                width: "44px",
-                height: "44px",
+                width: isMobile ? "36px" : "44px",
+                height: isMobile ? "36px" : "44px",
                 borderRadius: "12px",
                 border: "2px solid #e5e7eb",
                 boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
@@ -83,14 +97,21 @@ const CreateMeeting = () => {
       {/* Main Content */}
       <Box
         sx={{
+          flex: 1,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          minHeight: "100vh",
-          px: { xs: 2, sm: 4 },
+          px: { xs: 2, sm: 3, md: 4 },
+          py: { xs: 4, sm: 6 },
         }}
       >
-        <Container maxWidth="sm">
+        <Container 
+          maxWidth="sm" 
+          sx={{
+            width: "100%",
+            maxWidth: { xs: "100%", sm: "500px", md: "600px" }
+          }}
+        >
           <Zoom in timeout={600}>
             <Box
               sx={{
@@ -98,35 +119,45 @@ const CreateMeeting = () => {
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: 4,
+                gap: { xs: 3, sm: 4 },
+                pt: { xs: 6, sm: 4 }, // Extra top padding on mobile for user button
               }}
             >
               {/* Icon */}
               <Box
                 sx={{
-                  width: 120,
-                  height: 120,
+                  width: { xs: 80, sm: 100, md: 120 },
+                  height: { xs: 80, sm: 100, md: 120 },
                   borderRadius: "50%",
                   bgcolor: "white",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
-                  mb: 2,
+                  mb: { xs: 1, sm: 2 },
                 }}
               >
-                <VideoCall sx={{ fontSize: 60, color: "#1976d2" }} />
+                <VideoCall sx={{ 
+                  fontSize: { xs: 40, sm: 50, md: 60 }, 
+                  color: "#1976d2" 
+                }} />
               </Box>
 
               {/* Title */}
-              <Box>
+              <Box sx={{ px: { xs: 1, sm: 0 } }}>
                 <Typography
                   variant="h3"
                   fontWeight="600"
                   color="#1a1a1a"
                   sx={{
-                    mb: 2,
-                    fontSize: { xs: "2rem", sm: "2.5rem", md: "3rem" },
+                    mb: { xs: 1, sm: 2 },
+                    fontSize: { 
+                      xs: "1.75rem", 
+                      sm: "2.25rem", 
+                      md: "2.75rem",
+                      lg: "3rem" 
+                    },
+                    lineHeight: { xs: 1.2, sm: 1.1 },
                   }}
                 >
                   Create Meeting
@@ -136,7 +167,9 @@ const CreateMeeting = () => {
                   color="#6b7280"
                   sx={{
                     fontWeight: 400,
-                    fontSize: { xs: "1rem", sm: "1.25rem" },
+                    fontSize: { xs: "0.95rem", sm: "1.1rem", md: "1.25rem" },
+                    lineHeight: 1.4,
+                    px: { xs: 2, sm: 0 },
                   }}
                 >
                   Start a new video meeting instantly
@@ -146,17 +179,20 @@ const CreateMeeting = () => {
               {/* Create Button */}
               <Button
                 onClick={handleCreateMeeting}
-                startIcon={<Add />}
+                startIcon={<Add sx={{ fontSize: { xs: 20, sm: 24 } }} />}
                 sx={{
-                  px: 6,
-                  py: 2.5,
+                  px: { xs: 4, sm: 6 },
+                  py: { xs: 2, sm: 2.5 },
                   borderRadius: 2,
-                  fontSize: "1.1rem",
+                  fontSize: { xs: "1rem", sm: "1.1rem" },
                   fontWeight: "600",
                   bgcolor: "#1976d2",
                   color: "white",
                   textTransform: "none",
                   boxShadow: "0 2px 8px rgba(25,118,210,0.2)",
+                  minHeight: { xs: 48, sm: 56 }, // Touch-friendly height
+                  width: { xs: "100%", sm: "auto" },
+                  maxWidth: { xs: "280px", sm: "none" },
                   "&:hover": {
                     bgcolor: "#1565c0",
                     boxShadow: "0 4px 12px rgba(25,118,210,0.3)",
@@ -173,18 +209,29 @@ const CreateMeeting = () => {
                 <Fade in timeout={800}>
                   <Paper
                     sx={{
-                      p: 4,
+                      p: { xs: 3, sm: 4 },
                       bgcolor: "white",
                       borderRadius: 2,
                       border: "1px solid #e5e7eb",
                       width: "100%",
-                      maxWidth: 500,
+                      maxWidth: { xs: "100%", sm: "500px" },
                       boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
                     }}
                   >
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+                    <Box sx={{ 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: 1, 
+                      mb: 2,
+                      justifyContent: { xs: "center", sm: "flex-start" }
+                    }}>
                       <LinkIcon sx={{ fontSize: 20, color: "#6b7280" }} />
-                      <Typography variant="h6" fontWeight="600" color="#1a1a1a">
+                      <Typography 
+                        variant="h6" 
+                        fontWeight="600" 
+                        color="#1a1a1a"
+                        sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }}
+                      >
                         Meeting Link
                       </Typography>
                     </Box>
@@ -192,8 +239,9 @@ const CreateMeeting = () => {
                     <Box
                       sx={{
                         display: "flex",
-                        alignItems: "center",
-                        gap: 2,
+                        flexDirection: { xs: "column", sm: "row" },
+                        alignItems: { xs: "stretch", sm: "center" },
+                        gap: { xs: 2, sm: 2 },
                         p: 2,
                         bgcolor: "#f9fafb",
                         borderRadius: 1,
@@ -204,10 +252,12 @@ const CreateMeeting = () => {
                         sx={{
                           flex: 1,
                           fontFamily: "monospace",
-                          fontSize: "0.875rem",
+                          fontSize: { xs: "0.8rem", sm: "0.875rem" },
                           color: "#1976d2",
                           wordBreak: "break-all",
                           lineHeight: 1.4,
+                          textAlign: { xs: "center", sm: "left" },
+                          p: { xs: 1, sm: 0 },
                         }}
                       >
                         {meetingLink}
@@ -215,10 +265,11 @@ const CreateMeeting = () => {
                       <IconButton
                         onClick={handleCopy}
                         sx={{
-                          width: 40,
-                          height: 40,
+                          width: { xs: 48, sm: 40 },
+                          height: { xs: 48, sm: 40 },
                           bgcolor: "#10b981",
                           color: "white",
+                          alignSelf: { xs: "center", sm: "auto" },
                           "&:hover": {
                             bgcolor: "#059669",
                             transform: "scale(1.05)",
@@ -226,11 +277,20 @@ const CreateMeeting = () => {
                           transition: "all 0.2s ease",
                         }}
                       >
-                        <ContentCopy sx={{ fontSize: 18 }} />
+                        <ContentCopy sx={{ fontSize: { xs: 20, sm: 18 } }} />
                       </IconButton>
                     </Box>
 
-                    <Typography variant="body2" color="#6b7280" sx={{ mt: 2, textAlign: "center" }}>
+                    <Typography 
+                      variant="body2" 
+                      color="#6b7280" 
+                      sx={{ 
+                        mt: 2, 
+                        textAlign: "center",
+                        fontSize: { xs: "0.85rem", sm: "0.875rem" },
+                        lineHeight: 1.5,
+                      }}
+                    >
                       Share this link with participants to join the meeting
                     </Typography>
                   </Paper>
@@ -240,17 +300,35 @@ const CreateMeeting = () => {
               {/* Additional Info */}
               <Paper
                 sx={{
-                  p: 3,
+                  p: { xs: 2.5, sm: 3 },
                   bgcolor: "#eff6ff",
                   border: "1px solid #bfdbfe",
                   borderRadius: 2,
-                  maxWidth: 400,
+                  width: "100%",
+                  maxWidth: { xs: "100%", sm: "400px" },
                 }}
               >
-                <Typography variant="body2" color="#1e40af" sx={{ fontWeight: 500, mb: 1 }}>
+                <Typography 
+                  variant="body2" 
+                  color="#1e40af" 
+                  sx={{ 
+                    fontWeight: 500, 
+                    mb: 1,
+                    fontSize: { xs: "0.9rem", sm: "0.875rem" },
+                    textAlign: { xs: "center", sm: "left" }
+                  }}
+                >
                   💡 Quick Start Tips
                 </Typography>
-                <Typography variant="body2" color="#1e40af" sx={{ lineHeight: 1.6 }}>
+                <Typography 
+                  variant="body2" 
+                  color="#1e40af" 
+                  sx={{ 
+                    lineHeight: 1.6,
+                    fontSize: { xs: "0.85rem", sm: "0.875rem" },
+                    textAlign: { xs: "center", sm: "left" }
+                  }}
+                >
                   • Allow camera and microphone access when prompted
                   <br />• Share the meeting link with participants
                   <br />• Meeting starts as soon as you join
@@ -264,7 +342,13 @@ const CreateMeeting = () => {
             open={showCopyAlert}
             autoHideDuration={3000}
             onClose={() => setShowCopyAlert(false)}
-            anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+            anchorOrigin={{ 
+              vertical: "bottom", 
+              horizontal: "center" 
+            }}
+            sx={{
+              bottom: { xs: 80, sm: 24 }, // Higher on mobile to avoid nav bars
+            }}
           >
             <Alert
               onClose={() => setShowCopyAlert(false)}
@@ -272,6 +356,7 @@ const CreateMeeting = () => {
               sx={{
                 bgcolor: "#10b981",
                 color: "white",
+                fontSize: { xs: "0.85rem", sm: "0.875rem" },
                 "& .MuiAlert-icon": {
                   color: "white",
                 },
