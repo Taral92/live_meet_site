@@ -891,9 +891,6 @@ const MeetingRoom = () => {
                       background: "#000",
                       cursor: "pointer",
                       transform: "scaleX(-1)",
-                      transformOrigin: "left",
-                      transformStyle: "preserve-3d",
-                      backfaceVisibility: "hidden",
 
                     }}
                   />
