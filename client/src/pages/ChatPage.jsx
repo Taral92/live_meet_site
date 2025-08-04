@@ -14,7 +14,7 @@ const ChatPage = () => {
   const [chat, setChat] = useState([]);
   const socketRef = useRef(null);
 
-  const backendUrl = 'https://live-meet-site.onrender.com';
+  const backendUrl = 'http://localhost:3000';
 
   useEffect(() => {
     socketRef.current = io(backendUrl, {
