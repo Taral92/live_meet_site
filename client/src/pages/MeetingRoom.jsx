@@ -889,6 +889,8 @@ const MeetingRoom = () => {
                       height: "100%",
                       objectFit: "cover",
                       background: "#000",
+                      cursor: "pointer",
+                      transform: "scaleX(-1)",
                     }}
                   />
 
