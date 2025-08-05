@@ -221,6 +221,7 @@ const MeetingRoom = () => {
           // Screen share stream
           if (remoteScreenRef.current) {
             remoteScreenRef.current.srcObject = stream
+            remoteScreenRef.current.play().catch(console.error)
           }
         } else {
           // Regular video stream
@@ -262,16 +263,22 @@ const MeetingRoom = () => {
   const startScreenShare = async () => {
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { width: 1920, height: 1080 },
+        video: {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 },
+        },
         audio: true,
       })
 
       screenStreamRef.current = screenStream
       setIsScreenSharing(true)
 
-      // Show local screen share
+      // Show local screen share immediately
       if (localScreenRef.current) {
         localScreenRef.current.srcObject = screenStream
+        // Force play the video
+        localScreenRef.current.play().catch(console.error)
       }
 
       // Add screen tracks to peer connection
@@ -318,6 +325,14 @@ const MeetingRoom = () => {
 
     socketRef.current.emit("screen-share-stopped", roomId)
   }
+
+  // Effect to handle local screen stream assignment
+  useEffect(() => {
+    if (isScreenSharing && localScreenRef.current && screenStreamRef.current) {
+      localScreenRef.current.srcObject = screenStreamRef.current
+      localScreenRef.current.play().catch(console.error)
+    }
+  }, [isScreenSharing])
 
   // Leave meeting function
   const leaveMeeting = () => {
@@ -981,6 +996,7 @@ const MeetingRoom = () => {
                     ref={isScreenSharing ? localScreenRef : remoteScreenRef}
                     autoPlay
                     playsInline
+                    muted={isScreenSharing} // Only mute local screen share
                     style={{
                       width: "100%",
                       height: "100%",
@@ -1011,6 +1027,25 @@ const MeetingRoom = () => {
                       >
                         <StopScreenShare sx={{ fontSize: { xs: 16, md: 20 } }} />
                       </IconButton>
+                    </Box>
+                  )}
+
+                  {/* Debug info */}
+                  {isScreenSharing && (
+                    <Box
+                      sx={{
+                        position: "absolute",
+                        bottom: { xs: 8, md: 16 },
+                        left: { xs: 8, md: 16 },
+                        zIndex: 2,
+                        bgcolor: "rgba(0,0,0,0.7)",
+                        color: "white",
+                        p: 1,
+                        borderRadius: 1,
+                        fontSize: "0.75rem",
+                      }}
+                    >
+                      Screen sharing active
                     </Box>
                   )}
                 </Paper>
