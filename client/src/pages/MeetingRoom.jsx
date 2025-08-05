@@ -57,7 +57,7 @@ const MeetingRoom = () => {
   const userVideoRef = useRef(null)
   const remoteVideoRef = useRef(null)
   const screenShareRef = useRef(null)
-  const remoteScreenShareRef = useRef(null)
+  const remoteScreenRef = useRef(null)
   const peerConnection = useRef(null)
   const streamRef = useRef(null)
   const screenStreamRef = useRef(null)
@@ -85,24 +85,11 @@ const MeetingRoom = () => {
   // Initialize socket when clerk is loaded
   useEffect(() => {
     if (!isLoaded) return
-
     socketRef.current = io(backendUrl, { transports: ["websocket"] })
 
     // Listen for chat messages
     socketRef.current.on("chat-message", (data) => {
       setChat((prev) => [...prev, { username: data.username, message: data.message, timestamp: new Date() }])
-    })
-
-    // Listen for screen sharing events
-    socketRef.current.on("screen-share-started", () => {
-      setRemoteScreenSharing(true)
-    })
-
-    socketRef.current.on("screen-share-stopped", () => {
-      setRemoteScreenSharing(false)
-      if (remoteScreenShareRef.current) {
-        remoteScreenShareRef.current.srcObject = null
-      }
     })
 
     // Cleanup on unmount
@@ -168,9 +155,19 @@ const MeetingRoom = () => {
       setIsConnected(false)
       setRemoteScreenSharing(false)
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
-      if (remoteScreenShareRef.current) remoteScreenShareRef.current.srcObject = null
+      if (remoteScreenRef.current) remoteScreenRef.current.srcObject = null
       peerConnection.current?.close()
       peerConnection.current = null
+    })
+
+    // Screen sharing events
+    socket.on("screen-share-started", () => {
+      setRemoteScreenSharing(true)
+    })
+
+    socket.on("screen-share-stopped", () => {
+      setRemoteScreenSharing(false)
+      if (remoteScreenRef.current) remoteScreenRef.current.srcObject = null
     })
 
     // Cleanup event listeners on unmount or dependency change
@@ -180,6 +177,8 @@ const MeetingRoom = () => {
       socket.off("answer")
       socket.off("ice-candidate")
       socket.off("user-left")
+      socket.off("screen-share-started")
+      socket.off("screen-share-stopped")
       peerConnection.current?.close()
       peerConnection.current = null
     }
@@ -198,23 +197,22 @@ const MeetingRoom = () => {
     }
 
     pc.ontrack = (event) => {
-      const [remoteStream] = event.streams
-      if (remoteStream) {
-        // Check if it's a screen share stream (usually has different track kinds or metadata)
-        const videoTrack = remoteStream.getVideoTracks()[0]
-        if (videoTrack && videoTrack.label.includes('screen')) {
+      const [stream] = event.streams
+      if (stream) {
+        // Check if it's a screen share stream by looking at track kind and constraints
+        const videoTrack = stream.getVideoTracks()[0]
+        if (videoTrack && videoTrack.getSettings().displaySurface) {
           // This is a screen share stream
-          if (remoteScreenShareRef.current) {
-            remoteScreenShareRef.current.srcObject = remoteStream
-            setRemoteScreenSharing(true)
+          if (remoteScreenRef.current) {
+            remoteScreenRef.current.srcObject = stream
           }
         } else {
           // This is a regular video stream
           if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream
-            setIsConnected(true)
+            remoteVideoRef.current.srcObject = stream
           }
         }
+        setIsConnected(true)
       }
     }
 
@@ -244,36 +242,50 @@ const MeetingRoom = () => {
     }
   }
 
-  // Screen sharing functionality
+  // Screen sharing functions
   const startScreenShare = async () => {
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: { width: 1920, height: 1080 },
         audio: true,
       })
-      
+
       screenStreamRef.current = screenStream
       setIsScreenSharing(true)
-      
-      // Notify other participants
-      socketRef.current.emit("screen-share-started", { roomId })
-      
-      // Replace video track in peer connection with screen share
+
+      // Add screen share tracks to peer connection
       if (peerConnection.current) {
-        const screenVideoTrack = screenStream.getVideoTracks()[0]
-        const videoSender = peerConnection.current.getSenders().find(s => 
-          s.track && s.track.kind === 'video'
-        )
-        if (videoSender) {
-          await videoSender.replaceTrack(screenVideoTrack)
+        const videoTrack = screenStream.getVideoTracks()[0]
+        const audioTrack = screenStream.getAudioTracks()[0]
+
+        if (videoTrack) {
+          const sender = peerConnection.current
+            .getSenders()
+            .find((s) => s.track && s.track.kind === "video" && s.track.getSettings().displaySurface)
+          if (sender) {
+            await sender.replaceTrack(videoTrack)
+          } else {
+            peerConnection.current.addTrack(videoTrack, screenStream)
+          }
+        }
+
+        if (audioTrack) {
+          peerConnection.current.addTrack(audioTrack, screenStream)
         }
       }
-      
+
+      // Notify other participants
+      socketRef.current.emit("screen-share-started", roomId)
+
       // Handle screen share end
       screenStream.getVideoTracks()[0].onended = () => {
         stopScreenShare()
       }
-      
+
+      // Show screen share in local view
+      if (screenShareRef.current) {
+        screenShareRef.current.srcObject = screenStream
+      }
     } catch (error) {
       console.error("Error starting screen share:", error)
       setError("Failed to start screen sharing")
@@ -282,24 +294,29 @@ const MeetingRoom = () => {
 
   const stopScreenShare = async () => {
     if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach(track => track.stop())
+      screenStreamRef.current.getTracks().forEach((track) => track.stop())
       screenStreamRef.current = null
     }
-    
+
     setIsScreenSharing(false)
-    
-    // Notify other participants
-    socketRef.current.emit("screen-share-stopped", { roomId })
-    
-    // Replace back to camera stream in peer connection
+
+    // Remove screen share tracks from peer connection and add back camera
     if (peerConnection.current && streamRef.current) {
-      const cameraVideoTrack = streamRef.current.getVideoTracks()[0]
-      const videoSender = peerConnection.current.getSenders().find(s => 
-        s.track && s.track.kind === 'video'
-      )
-      if (videoSender && cameraVideoTrack) {
-        await videoSender.replaceTrack(cameraVideoTrack)
+      const videoTrack = streamRef.current.getVideoTracks()[0]
+      if (videoTrack) {
+        const sender = peerConnection.current.getSenders().find((s) => s.track && s.track.kind === "video")
+        if (sender) {
+          await sender.replaceTrack(videoTrack)
+        }
       }
+    }
+
+    // Notify other participants
+    socketRef.current.emit("screen-share-stopped", roomId)
+
+    // Clear screen share display
+    if (screenShareRef.current) {
+      screenShareRef.current.srcObject = null
     }
   }
 
@@ -312,17 +329,14 @@ const MeetingRoom = () => {
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((track) => track.stop())
     }
-
     // Close peer connection
     if (peerConnection.current) {
       peerConnection.current.close()
     }
-
     // Disconnect socket
     if (socketRef.current) {
       socketRef.current.disconnect()
     }
-
     // Navigate back to home or create meeting page
     navigate("/")
   }
@@ -336,21 +350,13 @@ const MeetingRoom = () => {
     leaveMeeting()
   }
 
-  // Assign local camera stream to video element - this should ALWAYS show camera
+  // Assign local stream to video element when both started and video ref ready
   useEffect(() => {
     if (isStarted && userVideoRef.current && streamRef.current) {
       userVideoRef.current.srcObject = streamRef.current
       userVideoRef.current.play().catch(() => {})
     }
   }, [isStarted])
-
-  // Assign screen share stream to its own video element
-  useEffect(() => {
-    if (isScreenSharing && screenShareRef.current && screenStreamRef.current) {
-      screenShareRef.current.srcObject = screenStreamRef.current
-      screenShareRef.current.play().catch(() => {})
-    }
-  }, [isScreenSharing])
 
   // Toggle audio track enabled state
   const toggleAudio = () => {
@@ -435,7 +441,6 @@ const MeetingRoom = () => {
           )}
         </Box>
       </Box>
-
       {/* Chat Messages */}
       <Box
         sx={{
@@ -522,7 +527,6 @@ const MeetingRoom = () => {
           </Box>
         )}
       </Box>
-
       {/* Chat Input */}
       <Box
         sx={{
@@ -642,7 +646,6 @@ const MeetingRoom = () => {
               }}
             />
           </Box>
-
           <Zoom in timeout={600}>
             <Box
               sx={{
@@ -672,7 +675,6 @@ const MeetingRoom = () => {
               >
                 <VideoCall sx={{ fontSize: { xs: 40, sm: 50, md: 60 }, color: "#1976d2" }} />
               </Box>
-
               <Box>
                 <Typography
                   variant="h4"
@@ -697,7 +699,6 @@ const MeetingRoom = () => {
                   Room: {roomId}
                 </Typography>
               </Box>
-
               {error && (
                 <Paper
                   sx={{
@@ -714,7 +715,6 @@ const MeetingRoom = () => {
                   </Typography>
                 </Paper>
               )}
-
               <Button
                 onClick={startMeeting}
                 disabled={isLoading}
@@ -744,7 +744,6 @@ const MeetingRoom = () => {
               >
                 {isLoading ? "Starting..." : "Start Meeting"}
               </Button>
-
               <Paper
                 sx={{
                   p: { xs: 2.5, sm: 3 },
@@ -941,17 +940,18 @@ const MeetingRoom = () => {
                 </Paper>
               )}
 
-              {/* Video Layout - Screen Share Mode */}
-              {(isScreenSharing || remoteScreenSharing) ? (
-                <Box
-                  sx={{
-                    flex: 1,
-                    display: "flex",
-                    gap: { xs: 1, md: 2 },
-                    p: { xs: 1, lg: 0 },
-                  }}
-                >
-                  {/* Screen Share Area - Left Side */}
+              {/* Video Grid */}
+              <Box
+                sx={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: { xs: 1, md: 2 },
+                  p: { xs: 1, lg: 0 },
+                }}
+              >
+                {/* Screen Share Area */}
+                {(isScreenSharing || remoteScreenSharing) && (
                   <Paper
                     sx={{
                       flex: 2,
@@ -960,7 +960,7 @@ const MeetingRoom = () => {
                       border: "1px solid #e5e7eb",
                       overflow: "hidden",
                       position: "relative",
-                      minHeight: { xs: "300px", sm: "400px", md: "auto" },
+                      minHeight: { xs: "250px", sm: "300px", md: "400px" },
                     }}
                   >
                     <Box
@@ -982,7 +982,6 @@ const MeetingRoom = () => {
                         }}
                       />
                     </Box>
-                    
                     {isScreenSharing ? (
                       <video
                         ref={screenShareRef}
@@ -997,7 +996,7 @@ const MeetingRoom = () => {
                       />
                     ) : (
                       <video
-                        ref={remoteScreenShareRef}
+                        ref={remoteScreenRef}
                         autoPlay
                         playsInline
                         style={{
@@ -1009,199 +1008,15 @@ const MeetingRoom = () => {
                       />
                     )}
                   </Paper>
+                )}
 
-                  {/* User Videos - Right Side */}
-                  <Box
-                    sx={{
-                      flex: 1,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: { xs: 1, md: 2 },
-                    }}
-                  >
-                    {/* Local Video - Always shows camera stream */}
-                    <Paper
-                      sx={{
-                        flex: 1,
-                        bgcolor: "white",
-                        borderRadius: { xs: 1, md: 2 },
-                        border: "1px solid #e5e7eb",
-                        overflow: "hidden",
-                        position: "relative",
-                        minHeight: { xs: "150px", sm: "200px" },
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          top: { xs: 8, md: 12 },
-                          left: { xs: 8, md: 12 },
-                          zIndex: 2,
-                        }}
-                      >
-                        <Chip
-                          label="You"
-                          size="small"
-                          sx={{
-                            bgcolor: "rgba(0,0,0,0.7)",
-                            color: "white",
-                            fontSize: { xs: "0.65rem", md: "0.7rem" },
-                            height: { xs: 18, md: 20 },
-                          }}
-                        />
-                      </Box>
-                      {/* This video element ALWAYS shows the camera stream, never screen share */}
-                      <video
-                        ref={userVideoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          background: "#000",
-                          transform: "scaleX(-1)",
-                        }}
-                      />
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          bottom: { xs: 6, md: 12 },
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          display: "flex",
-                          gap: 0.5,
-                        }}
-                      >
-                        <IconButton
-                          onClick={toggleAudio}
-                          sx={{
-                            width: { xs: 28, md: 36 },
-                            height: { xs: 28, md: 36 },
-                            bgcolor: isAudioMuted ? "#dc2626" : "rgba(255,255,255,0.9)",
-                            color: isAudioMuted ? "white" : "#374151",
-                            "&:hover": {
-                              bgcolor: isAudioMuted ? "#b91c1c" : "white",
-                            },
-                          }}
-                        >
-                          {isAudioMuted ? (
-                            <MicOff sx={{ fontSize: { xs: 14, md: 16 } }} />
-                          ) : (
-                            <Mic sx={{ fontSize: { xs: 14, md: 16 } }} />
-                          )}
-                        </IconButton>
-                        <IconButton
-                          onClick={toggleVideo}
-                          sx={{
-                            width: { xs: 28, md: 36 },
-                            height: { xs: 28, md: 36 },
-                            bgcolor: isVideoMuted ? "#dc2626" : "rgba(255,255,255,0.9)",
-                            color: isVideoMuted ? "white" : "#374151",
-                            "&:hover": {
-                              bgcolor: isVideoMuted ? "#b91c1c" : "white",
-                            },
-                          }}
-                        >
-                          {isVideoMuted ? (
-                            <VideocamOff sx={{ fontSize: { xs: 14, md: 16 } }} />
-                          ) : (
-                            <Videocam sx={{ fontSize: { xs: 14, md: 16 } }} />
-                          )}
-                        </IconButton>
-                        <IconButton
-                          onClick={isScreenSharing ? stopScreenShare : startScreenShare}
-                          sx={{
-                            width: { xs: 28, md: 36 },
-                            height: { xs: 28, md: 36 },
-                            bgcolor: isScreenSharing ? "#dc2626" : "rgba(255,255,255,0.9)",
-                            color: isScreenSharing ? "white" : "#374151",
-                            "&:hover": {
-                              bgcolor: isScreenSharing ? "#b91c1c" : "white",
-                            },
-                          }}
-                        >
-                          {isScreenSharing ? (
-                            <StopScreenShare sx={{ fontSize: { xs: 14, md: 16 } }} />
-                          ) : (
-                            <ScreenShare sx={{ fontSize: { xs: 14, md: 16 } }} />
-                          )}
-                        </IconButton>
-                      </Box>
-                    </Paper>
-
-                    {/* Remote Video */}
-                    <Paper
-                      sx={{
-                        flex: 1,
-                        bgcolor: "white",
-                        borderRadius: { xs: 1, md: 2 },
-                        border: "1px solid #e5e7eb",
-                        overflow: "hidden",
-                        position: "relative",
-                        minHeight: { xs: "150px", sm: "200px" },
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          top: { xs: 8, md: 12 },
-                          left: { xs: 8, md: 12 },
-                          zIndex: 2,
-                        }}
-                      >
-                        <Chip
-                          label={isConnected ? "Participant" : "Waiting..."}
-                          size="small"
-                          sx={{
-                            bgcolor: "rgba(0,0,0,0.7)",
-                            color: "white",
-                            fontSize: { xs: "0.65rem", md: "0.7rem" },
-                            height: { xs: 18, md: 20 },
-                          }}
-                        />
-                      </Box>
-                      <video
-                        ref={remoteVideoRef}
-                        autoPlay
-                        playsInline
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          background: "#000",
-                        }}
-                      />
-                      {!isConnected && (
-                        <Box
-                          sx={{
-                            position: "absolute",
-                            top: "50%",
-                            left: "50%",
-                            transform: "translate(-50%, -50%)",
-                            textAlign: "center",
-                            color: "white",
-                          }}
-                        >
-                          <CircularProgress sx={{ color: "white", mb: 1 }} size={24} />
-                          <Typography variant="caption" sx={{ fontSize: { xs: "0.7rem", md: "0.75rem" } }}>
-                            Waiting...
-                          </Typography>
-                        </Box>
-                      )}
-                    </Paper>
-                  </Box>
-                </Box>
-              ) : (
-                /* Regular Video Grid - No Screen Share */
+                {/* Participant Videos */}
                 <Box
                   sx={{
-                    flex: 1,
                     display: "flex",
                     flexDirection: { xs: "column", md: "row" },
                     gap: { xs: 1, md: 2 },
-                    p: { xs: 1, lg: 0 },
+                    flex: isScreenSharing || remoteScreenSharing ? 1 : 2,
                   }}
                 >
                   {/* Local Video */}
@@ -1213,7 +1028,11 @@ const MeetingRoom = () => {
                       border: "1px solid #e5e7eb",
                       overflow: "hidden",
                       position: "relative",
-                      minHeight: { xs: "200px", sm: "250px", md: "auto" },
+                      minHeight: {
+                        xs: "150px",
+                        sm: "200px",
+                        md: isScreenSharing || remoteScreenSharing ? "200px" : "auto",
+                      },
                     }}
                   >
                     <Box
@@ -1262,8 +1081,8 @@ const MeetingRoom = () => {
                       <IconButton
                         onClick={toggleAudio}
                         sx={{
-                          width: { xs: 36, md: 44 },
-                          height: { xs: 36, md: 44 },
+                          width: { xs: 32, md: 40 },
+                          height: { xs: 32, md: 40 },
                           bgcolor: isAudioMuted ? "#dc2626" : "rgba(255,255,255,0.9)",
                           color: isAudioMuted ? "white" : "#374151",
                           "&:hover": {
@@ -1272,16 +1091,16 @@ const MeetingRoom = () => {
                         }}
                       >
                         {isAudioMuted ? (
-                          <MicOff sx={{ fontSize: { xs: 16, md: 20 } }} />
+                          <MicOff sx={{ fontSize: { xs: 14, md: 18 } }} />
                         ) : (
-                          <Mic sx={{ fontSize: { xs: 16, md: 20 } }} />
+                          <Mic sx={{ fontSize: { xs: 14, md: 18 } }} />
                         )}
                       </IconButton>
                       <IconButton
                         onClick={toggleVideo}
                         sx={{
-                          width: { xs: 36, md: 44 },
-                          height: { xs: 36, md: 44 },
+                          width: { xs: 32, md: 40 },
+                          height: { xs: 32, md: 40 },
                           bgcolor: isVideoMuted ? "#dc2626" : "rgba(255,255,255,0.9)",
                           color: isVideoMuted ? "white" : "#374151",
                           "&:hover": {
@@ -1290,16 +1109,16 @@ const MeetingRoom = () => {
                         }}
                       >
                         {isVideoMuted ? (
-                          <VideocamOff sx={{ fontSize: { xs: 16, md: 20 } }} />
+                          <VideocamOff sx={{ fontSize: { xs: 14, md: 18 } }} />
                         ) : (
-                          <Videocam sx={{ fontSize: { xs: 16, md: 20 } }} />
+                          <Videocam sx={{ fontSize: { xs: 14, md: 18 } }} />
                         )}
                       </IconButton>
                       <IconButton
                         onClick={isScreenSharing ? stopScreenShare : startScreenShare}
                         sx={{
-                          width: { xs: 36, md: 44 },
-                          height: { xs: 36, md: 44 },
+                          width: { xs: 32, md: 40 },
+                          height: { xs: 32, md: 40 },
                           bgcolor: isScreenSharing ? "#dc2626" : "rgba(255,255,255,0.9)",
                           color: isScreenSharing ? "white" : "#374151",
                           "&:hover": {
@@ -1308,9 +1127,9 @@ const MeetingRoom = () => {
                         }}
                       >
                         {isScreenSharing ? (
-                          <StopScreenShare sx={{ fontSize: { xs: 16, md: 20 } }} />
+                          <StopScreenShare sx={{ fontSize: { xs: 14, md: 18 } }} />
                         ) : (
-                          <ScreenShare sx={{ fontSize: { xs: 16, md: 20 } }} />
+                          <ScreenShare sx={{ fontSize: { xs: 14, md: 18 } }} />
                         )}
                       </IconButton>
                     </Box>
@@ -1325,7 +1144,11 @@ const MeetingRoom = () => {
                       border: "1px solid #e5e7eb",
                       overflow: "hidden",
                       position: "relative",
-                      minHeight: { xs: "200px", sm: "250px", md: "auto" },
+                      minHeight: {
+                        xs: "150px",
+                        sm: "200px",
+                        md: isScreenSharing || remoteScreenSharing ? "200px" : "auto",
+                      },
                     }}
                   >
                     <Box
@@ -1377,7 +1200,7 @@ const MeetingRoom = () => {
                     )}
                   </Paper>
                 </Box>
-              )}
+              </Box>
 
               {/* Share Link - Desktop only */}
               {!isConnected && !isMobile && (
