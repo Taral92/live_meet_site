@@ -72,6 +72,7 @@ const App = () => {
         element={<SignIn routing="path" path="/sign-in" />}
       />
       <Route path="*" element={<Navigate to="/create-meeting" />} />
+      
     </Routes>
   );
 };

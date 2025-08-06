@@ -22,12 +22,17 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  AppBar,
-  Toolbar,
-  Fab,
   Snackbar,
   Alert,
+  Card,
+  CardContent,
+  Tooltip,
+  Fade,
   Slide,
+  Grow,
+  Badge,
+  Avatar,
+  Divider,
 } from "@mui/material"
 import {
   Mic,
@@ -46,8 +51,13 @@ import {
   ScreenShare,
   StopScreenShare,
   PresentToAll,
-  Warning,
-  CheckCircle,
+  Fullscreen,
+  FullscreenExit,
+  Settings,
+  MoreVert,
+  ContentCopy,
+  VolumeUp,
+  VolumeOff,
 } from "@mui/icons-material"
 
 const backendUrl = "https://live-meet-site.onrender.com"
@@ -58,7 +68,6 @@ const MeetingRoom = () => {
   const navigate = useNavigate()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down("md"))
-  const isTablet = useMediaQuery(theme.breakpoints.between("md", "lg"))
   const isSmallMobile = useMediaQuery(theme.breakpoints.down("sm"))
 
   // Video refs
@@ -86,30 +95,42 @@ const MeetingRoom = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(false)
+  const [unreadMessages, setUnreadMessages] = useState(0)
 
   // Screen sharing states
   const [isScreenSharing, setIsScreenSharing] = useState(false)
   const [remoteScreenSharing, setRemoteScreenSharing] = useState(false)
-  const [screenShareStatus, setScreenShareStatus] = useState(null) // 'starting', 'stopping', 'error'
+  const [screenShareStatus, setScreenShareStatus] = useState(null)
 
-  // Notification states
+  // UI states
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showControls, setShowControls] = useState(true)
+  const [controlsTimeout, setControlsTimeout] = useState(null)
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' })
 
-  // Helper function to show notifications
+  // Notification helper
   const showNotification = useCallback((message, severity = 'info') => {
     setNotification({ open: true, message, severity })
   }, [])
 
-  // Helper function to get video sender from peer connection
+  // Auto-hide controls
+  const resetControlsTimeout = useCallback(() => {
+    if (controlsTimeout) clearTimeout(controlsTimeout)
+    setShowControls(true)
+    if (isStarted) {
+      const timeout = setTimeout(() => setShowControls(false), 3000)
+      setControlsTimeout(timeout)
+    }
+  }, [controlsTimeout, isStarted])
+
+  // Get video sender
   const getVideoSender = useCallback(() => {
     if (!peerConnection.current) return null
     const senders = peerConnection.current.getSenders()
-    return senders.find(sender => 
-      sender.track && sender.track.kind === 'video'
-    )
+    return senders.find(sender => sender.track && sender.track.kind === 'video')
   }, [])
 
-  // Helper function to replace video track
+  // Replace video track
   const replaceVideoTrack = useCallback(async (newTrack) => {
     const videoSender = getVideoSender()
     if (videoSender) {
@@ -125,23 +146,14 @@ const MeetingRoom = () => {
     return false
   }, [getVideoSender])
 
-  // Helper function to create offer and send to remote peer
+  // Create and send offer
   const createAndSendOffer = useCallback(async () => {
-    if (!peerConnection.current || !remoteSocketId.current) {
-      console.error('Cannot create offer: missing peer connection or remote socket ID')
-      return false
-    }
+    if (!peerConnection.current || !remoteSocketId.current) return false
 
     try {
       const offer = await peerConnection.current.createOffer()
       await peerConnection.current.setLocalDescription(offer)
-      
-      socketRef.current.emit("offer", { 
-        offer, 
-        target: remoteSocketId.current 
-      }, roomId)
-      
-      console.log('Offer sent to:', remoteSocketId.current)
+      socketRef.current.emit("offer", { offer, target: remoteSocketId.current }, roomId)
       return true
     } catch (error) {
       console.error('Failed to create and send offer:', error)
@@ -149,14 +161,13 @@ const MeetingRoom = () => {
     }
   }, [roomId])
 
-  // Improved screen sharing function
+  // Start screen sharing
   const startScreenShare = useCallback(async () => {
     if (isScreenSharing) return
     
     setScreenShareStatus('starting')
     
     try {
-      // Get screen share stream
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           width: { ideal: 1920 },
@@ -167,44 +178,33 @@ const MeetingRoom = () => {
       })
 
       const screenVideoTrack = screenStream.getVideoTracks()[0]
-      if (!screenVideoTrack) {
-        throw new Error('No video track in screen share stream')
-      }
+      if (!screenVideoTrack) throw new Error('No video track in screen share stream')
 
-      // Store screen stream
       screenStreamRef.current = screenStream
       
-      // Only replace track if peer connection exists and is connected
       if (peerConnection.current && isConnected) {
         const replaced = await replaceVideoTrack(screenVideoTrack)
         if (!replaced) {
-          // Fallback: add track if replace failed
           peerConnection.current.addTrack(screenVideoTrack, screenStream)
         }
         
-        // Create and send new offer only if we have a remote peer
         if (remoteSocketId.current) {
           await createAndSendOffer()
         }
       }
 
-      // Update local display
       if (localScreenRef.current) {
         localScreenRef.current.srcObject = screenStream
         localScreenRef.current.play().catch(console.error)
       }
 
-      // Update states
       setIsScreenSharing(true)
       setScreenShareStatus(null)
       
-      // Notify remote peer (even if not connected yet, for when they join)
       socketRef.current.emit("screen-share-started", roomId)
       showNotification('Screen sharing started', 'success')
 
-      // Handle screen share end (when user stops from browser UI)
       screenVideoTrack.onended = () => {
-        console.log('Screen share ended by user')
         stopScreenShare()
       }
 
@@ -226,155 +226,137 @@ const MeetingRoom = () => {
     }
   }, [isScreenSharing, isConnected, replaceVideoTrack, createAndSendOffer, roomId, showNotification])
 
-  // Improved stop screen sharing function
+  // Stop screen sharing
   const stopScreenShare = useCallback(async () => {
     if (!isScreenSharing) return
     
     setScreenShareStatus('stopping')
     
     try {
-      // Stop screen stream tracks
       if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach(track => {
-          track.stop()
-          console.log('Stopped screen track:', track.kind)
-        })
+        screenStreamRef.current.getTracks().forEach(track => track.stop())
         screenStreamRef.current = null
       }
 
-      // Only replace track if peer connection exists and is connected
       if (peerConnection.current && isConnected) {
-        // Get camera video track to restore
         const cameraVideoTrack = streamRef.current?.getVideoTracks()[0]
         
         if (cameraVideoTrack) {
-          // Replace screen track with camera track
           const replaced = await replaceVideoTrack(cameraVideoTrack)
           if (!replaced) {
             console.warn('Failed to replace track, camera may not be restored properly')
           }
         } else {
-          // No camera track available, replace with null to remove video
           await replaceVideoTrack(null)
         }
 
-        // Create and send new offer only if we have a remote peer
         if (remoteSocketId.current) {
           await createAndSendOffer()
         }
       }
 
-      // Clear local screen display
       if (localScreenRef.current) {
         localScreenRef.current.srcObject = null
       }
 
-      // Update states
       setIsScreenSharing(false)
       setScreenShareStatus(null)
       
-      // Notify remote peer
       socketRef.current.emit("screen-share-stopped", roomId)
       showNotification('Screen sharing stopped', 'info')
 
-  } catch (error) {
-    console.error('Failed to stop screen sharing:', error)
-    setScreenShareStatus('error')
-    showNotification('Error stopping screen share', 'error')
-    setTimeout(() => setScreenShareStatus(null), 3000)
-  }
-}, [isScreenSharing, isConnected, replaceVideoTrack, createAndSendOffer, roomId, showNotification])
+    } catch (error) {
+      console.error('Failed to stop screen sharing:', error)
+      setScreenShareStatus('error')
+      showNotification('Error stopping screen share', 'error')
+      setTimeout(() => setScreenShareStatus(null), 3000)
+    }
+  }, [isScreenSharing, isConnected, replaceVideoTrack, createAndSendOffer, roomId, showNotification])
 
-  // Auto scroll chat to bottom
+  // Auto scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [chat])
 
-  // Initialize socket when clerk is loaded
+  // Initialize socket
   useEffect(() => {
     if (!isLoaded) return
 
     socketRef.current = io(backendUrl, { transports: ["websocket"] })
 
-    // Listen for chat messages
     socketRef.current.on("chat-message", (data) => {
       setChat((prev) => [...prev, { 
         username: data.username, 
         message: data.message, 
-        timestamp: new Date() 
+        timestamp: new Date(),
+        id: data.id
       }])
+      
+      if (!isChatOpen && data.id !== socketRef.current.id) {
+        setUnreadMessages(prev => prev + 1)
+      }
     })
 
-    // Screen sharing socket events
     socketRef.current.on("screen-share-started", () => {
-      console.log('Remote user started screen sharing')
       setRemoteScreenSharing(true)
+      showNotification('Participant started screen sharing', 'info')
     })
 
     socketRef.current.on("screen-share-stopped", () => {
-      console.log('Remote user stopped screen sharing')
       setRemoteScreenSharing(false)
       if (remoteScreenRef.current) {
         remoteScreenRef.current.srcObject = null
       }
+      showNotification('Participant stopped screen sharing', 'info')
     })
 
-    // Cleanup on unmount
     return () => {
       peerConnection.current?.close()
       streamRef.current?.getTracks?.().forEach((track) => track.stop())
       screenStreamRef.current?.getTracks?.().forEach((track) => track.stop())
       socketRef.current?.disconnect()
     }
-  }, [isLoaded, roomId])
+  }, [isLoaded, roomId, isChatOpen])
 
-  // Setup signaling listeners only when meeting started
+  // Setup signaling
   useEffect(() => {
     if (!isStarted || !isLoaded || !socketRef.current) return
 
     const socket = socketRef.current
 
-    // Join signaling rooms
     socket.emit("join-meeting", roomId)
     socket.emit("join", roomId)
 
     socket.on("user-joined", async ({ socketId }) => {
-      console.log('User joined:', socketId)
       remoteSocketId.current = socketId
       
       if (!peerConnection.current && streamRef.current) {
         peerConnection.current = createPeerConnection(socket, socketId)
         
-        // Add camera tracks
         streamRef.current.getTracks().forEach((track) => {
           peerConnection.current.addTrack(track, streamRef.current)
         })
 
-        // If screen sharing is active, replace the video track
         if (isScreenSharing && screenStreamRef.current) {
           const screenVideoTrack = screenStreamRef.current.getVideoTracks()[0]
           if (screenVideoTrack) {
             const replaced = await replaceVideoTrack(screenVideoTrack)
             if (!replaced) {
-              // Fallback: add screen track
               peerConnection.current.addTrack(screenVideoTrack, screenStreamRef.current)
             }
           }
         }
 
-        // Create and send offer
         await createAndSendOffer()
       }
     })
 
     socket.on("offer", async ({ offer, from }) => {
-      console.log("Received offer from:", from)
       remoteSocketId.current = from
       
       if (!peerConnection.current && streamRef.current) {
         peerConnection.current = createPeerConnection(socket, from)
         
-        // Add all tracks from current stream
         streamRef.current.getTracks().forEach((track) => {
           peerConnection.current.addTrack(track, streamRef.current)
         })
@@ -405,7 +387,6 @@ const MeetingRoom = () => {
     })
 
     socket.on("user-left", () => {
-      console.log('User left')
       setIsConnected(false)
       setRemoteScreenSharing(false)
       remoteSocketId.current = null
@@ -417,7 +398,6 @@ const MeetingRoom = () => {
       peerConnection.current = null
     })
 
-    // Cleanup event listeners on unmount or dependency change
     return () => {
       socket.off("user-joined")
       socket.off("offer")
@@ -427,9 +407,9 @@ const MeetingRoom = () => {
       peerConnection.current?.close()
       peerConnection.current = null
     }
-  }, [isStarted, isLoaded, roomId, createAndSendOffer])
+  }, [isStarted, isLoaded, roomId, createAndSendOffer, isScreenSharing, replaceVideoTrack])
 
-  // PeerConnection creation helper
+  // Create peer connection
   const createPeerConnection = useCallback((socket, targetSocketId) => {
     const pc = new RTCPeerConnection({
       iceServers: [
@@ -449,10 +429,8 @@ const MeetingRoom = () => {
 
     pc.ontrack = (event) => {
       const [stream] = event.streams
-      console.log("Received track:", event.track.kind, event.track.label, stream?.id)
       
       if (stream) {
-        // Improved stream detection logic
         const isScreenStream = 
           stream.id.includes("screen") ||
           event.track.label.includes("screen") ||
@@ -462,21 +440,17 @@ const MeetingRoom = () => {
           event.track.label.includes("tab")
 
         if (isScreenStream) {
-          console.log("Detected screen share stream")
           if (remoteScreenRef.current) {
             remoteScreenRef.current.srcObject = stream
             remoteScreenRef.current.play().catch(console.error)
           }
           setRemoteScreenSharing(true)
         } else {
-          console.log("Detected camera stream")
           if (remoteVideoRef.current) {
             remoteVideoRef.current.srcObject = stream
             remoteVideoRef.current.play().catch(console.error)
           }
-          // Only set remoteScreenSharing to false if we're sure this is a camera stream
-          // and we were previously showing screen share
-          if (remoteScreenSharing) {
+          if (remoteScreenSharing && !isScreenStream) {
             setRemoteScreenSharing(false)
           }
         }
@@ -486,7 +460,6 @@ const MeetingRoom = () => {
 
     pc.oniceconnectionstatechange = () => {
       const state = pc.iceConnectionState
-      console.log("ICE connection state:", state)
       
       if (state === "connected" || state === "completed") {
         setIsConnected(true)
@@ -501,7 +474,7 @@ const MeetingRoom = () => {
     return pc
   }, [roomId, remoteScreenSharing, showNotification])
 
-  // Start meeting: get media and show local video
+  // Start meeting
   const startMeeting = async () => {
     setIsLoading(true)
     try {
@@ -538,14 +511,12 @@ const MeetingRoom = () => {
     }
   }
 
-  // Leave meeting function
+  // Leave meeting
   const leaveMeeting = useCallback(() => {
-    // Stop screen sharing if active
     if (isScreenSharing) {
       stopScreenShare()
     }
 
-    // Stop all tracks
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop())
     }
@@ -553,30 +524,19 @@ const MeetingRoom = () => {
       screenStreamRef.current.getTracks().forEach((track) => track.stop())
     }
 
-    // Close peer connection
     if (peerConnection.current) {
       peerConnection.current.close()
     }
 
-    // Disconnect socket
     if (socketRef.current) {
+      socketRef.current.emit("leave-room", roomId)
       socketRef.current.disconnect()
     }
 
-    // Navigate back to home
     navigate("/")
-  }, [isScreenSharing, stopScreenShare, navigate])
+  }, [isScreenSharing, stopScreenShare, navigate, roomId])
 
-  const handleLeaveMeeting = () => {
-    setShowLeaveDialog(true)
-  }
-
-  const confirmLeaveMeeting = () => {
-    setShowLeaveDialog(false)
-    leaveMeeting()
-  }
-
-  // Assign local stream to video element when both started and video ref ready
+  // Assign local stream to video
   useEffect(() => {
     if (isStarted && userVideoRef.current && streamRef.current) {
       userVideoRef.current.srcObject = streamRef.current
@@ -584,7 +544,7 @@ const MeetingRoom = () => {
     }
   }, [isStarted])
 
-  // Toggle audio track enabled state
+  // Toggle audio
   const toggleAudio = useCallback(() => {
     if (streamRef.current) {
       const audioTrack = streamRef.current.getAudioTracks()[0]
@@ -599,7 +559,7 @@ const MeetingRoom = () => {
     }
   }, [showNotification])
 
-  // Toggle video track enabled state
+  // Toggle video
   const toggleVideo = useCallback(() => {
     if (streamRef.current) {
       const videoTrack = streamRef.current.getVideoTracks()[0]
@@ -626,232 +586,249 @@ const MeetingRoom = () => {
     }
   }, [message, roomId, user])
 
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
+  // Copy room link
+  const copyRoomLink = useCallback(() => {
+    navigator.clipboard.writeText(window.location.href)
+    showNotification('Room link copied to clipboard!', 'success')
+  }, [showNotification])
+
+  // Toggle fullscreen
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen()
+      setIsFullscreen(true)
+    } else {
+      document.exitFullscreen()
+      setIsFullscreen(false)
     }
-  }
+  }, [])
+
+  // Open chat
+  const openChat = useCallback(() => {
+    setIsChatOpen(true)
+    setUnreadMessages(0)
+  }, [])
+
+  // Mouse move handler
+  useEffect(() => {
+    const handleMouseMove = () => resetControlsTimeout()
+    
+    if (isStarted) {
+      document.addEventListener('mousemove', handleMouseMove)
+      resetControlsTimeout()
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      if (controlsTimeout) clearTimeout(controlsTimeout)
+    }
+  }, [isStarted, resetControlsTimeout, controlsTimeout])
 
   // Enhanced Chat Component
-  const ChatComponent = ({ isDrawer = false }) => (
-    <Box
-      sx={{
-        height: isDrawer ? "100%" : "100%",
-        display: "flex",
-        flexDirection: "column",
-        bgcolor: "white",
-      }}
-    >
-      {/* Chat Header */}
-      <Box
+  const ChatComponent = () => (
+    <Slide direction="left" in={isChatOpen} mountOnEnter unmountOnExit>
+      <Paper
         sx={{
-          p: { xs: 2, sm: 3 },
-          borderBottom: "1px solid #e5e7eb",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          bgcolor: "white",
+          position: 'fixed',
+          right: 0,
+          top: 0,
+          height: '100vh',
+          width: { xs: '100vw', md: 400 },
+          zIndex: 1300,
+          display: 'flex',
+          flexDirection: 'column',
+          borderRadius: { xs: 0, md: '24px 0 0 24px' },
+          background: 'linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.95) 100%)',
+          backdropFilter: 'blur(20px)',
+          boxShadow: '0 25px 50px rgba(0,0,0,0.15)',
+          border: '1px solid rgba(255,255,255,0.2)',
         }}
       >
-        <Typography 
-          variant="h6" 
-          fontWeight="600" 
-          color="#1a1a1a" 
-          sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }}
+        {/* Chat Header */}
+        <Box
+          sx={{
+            p: 3,
+            borderBottom: '1px solid rgba(0,0,0,0.08)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            borderRadius: { xs: 0, md: '24px 0 0 0' },
+          }}
         >
-          Chat
-        </Typography>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <Chip
-            label={chat.length}
-            size="small"
-            sx={{
-              bgcolor: "#f3f4f6",
-              color: "#6b7280",
-              fontSize: "0.75rem",
-              height: 24,
-            }}
-          />
-          {isDrawer && (
-            <IconButton onClick={() => setIsChatOpen(false)} size="small">
-              <Close />
-            </IconButton>
-          )}
-        </Box>
-      </Box>
-
-      {/* Chat Messages */}
-      <Box
-        sx={{
-          flex: 1,
-          overflowY: "auto",
-          p: { xs: 1.5, sm: 2 },
-          "&::-webkit-scrollbar": {
-            width: "6px",
-          },
-          "&::-webkit-scrollbar-track": {
-            bgcolor: "transparent",
-          },
-          "&::-webkit-scrollbar-thumb": {
-            bgcolor: "#d1d5db",
-            borderRadius: "3px",
-          },
-        }}
-      >
-        {chat.length === 0 ? (
-          <Box
-            sx={{
-              textAlign: "center",
-              py: { xs: 4, sm: 8 },
-              color: "#9ca3af",
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 32, height: 32 }}>
+              <Chat sx={{ fontSize: 18 }} />
+            </Avatar>
+            <Typography variant="h6" fontWeight="bold">
+              Chat
+            </Typography>
+          </Box>
+          <IconButton 
+            onClick={() => setIsChatOpen(false)} 
+            sx={{ 
+              color: 'white',
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }
             }}
           >
-            <Chat sx={{ fontSize: { xs: 36, sm: 48 }, opacity: 0.3, mb: 2 }} />
-            <Typography variant="body2" sx={{ fontSize: { xs: "0.85rem", sm: "0.875rem" } }}>
-              No messages yet
-            </Typography>
-            <Typography variant="caption" sx={{ fontSize: { xs: "0.75rem", sm: "0.75rem" } }}>
-              Start the conversation!
-            </Typography>
-          </Box>
-        ) : (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: { xs: 1.5, sm: 2 } }}>
-            {chat.map((msg, idx) => {
-              const isOwnMessage = msg.username === (user?.username || user?.firstName || "Anonymous")
-              return (
-                <Box
-                  key={idx}
-                  sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: isOwnMessage ? "flex-end" : "flex-start",
-                  }}
-                >
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      color: "#6b7280",
-                      mb: 0.5,
-                      px: 1,
-                      fontSize: { xs: "0.7rem", sm: "0.75rem" },
-                    }}
-                  >
-                    {msg.username}
-                  </Typography>
-                  <Box
-                    sx={{
-                      maxWidth: "85%",
-                      p: { xs: 1.5, sm: 2 },
-                      borderRadius: 2,
-                      bgcolor: isOwnMessage ? "#1976d2" : "#f3f4f6",
-                      color: isOwnMessage ? "white" : "#1a1a1a",
-                      borderBottomRightRadius: isOwnMessage ? 0.5 : 2,
-                      borderBottomLeftRadius: isOwnMessage ? 2 : 0.5,
-                    }}
-                  >
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        lineHeight: 1.4,
-                        fontSize: { xs: "0.85rem", sm: "0.875rem" },
-                      }}
-                    >
-                      {msg.message}
-                    </Typography>
-                  </Box>
-                </Box>
-              )
-            })}
-            <div ref={chatEndRef} />
-          </Box>
-        )}
-      </Box>
+            <Close />
+          </IconButton>
+        </Box>
 
-      {/* Chat Input */}
-      <Box
-        sx={{
-          p: { xs: 1.5, sm: 2 },
-          borderTop: "1px solid #e5e7eb",
-          display: "flex",
-          gap: 1,
-          bgcolor: "white",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <TextField
-          fullWidth
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyPress={handleKeyPress}
-          onFocus={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          placeholder="Type a message..."
-          variant="outlined"
-          size="small"
-          autoComplete="off"
+        {/* Messages */}
+        <Box
           sx={{
-            "& .MuiOutlinedInput-root": {
-              borderRadius: 2,
-              bgcolor: "#f9fafb",
-              border: "1px solid #e5e7eb",
-              fontSize: { xs: "0.9rem", sm: "1rem" },
-              "&:hover": {
-                border: "1px solid #d1d5db",
-              },
-              "&.Mui-focused": {
-                border: "1px solid #1976d2",
-                bgcolor: "white",
-              },
-              "& fieldset": {
-                border: "none",
-              },
-            },
-          }}
-        />
-        <IconButton
-          onClick={(e) => {
-            e.stopPropagation()
-            handleSend()
-          }}
-          disabled={!message.trim()}
-          sx={{
-            width: { xs: 44, sm: 40 },
-            height: { xs: 44, sm: 40 },
-            bgcolor: message.trim() ? "#1976d2" : "#f3f4f6",
-            color: message.trim() ? "white" : "#9ca3af",
-            "&:hover": {
-              bgcolor: message.trim() ? "#1565c0" : "#e5e7eb",
-            },
-            "&:disabled": {
-              bgcolor: "#f3f4f6",
-              color: "#9ca3af",
+            flex: 1,
+            overflowY: 'auto',
+            p: 2,
+            '&::-webkit-scrollbar': { width: '6px' },
+            '&::-webkit-scrollbar-track': { background: 'transparent' },
+            '&::-webkit-scrollbar-thumb': {
+              background: 'rgba(0,0,0,0.2)',
+              borderRadius: '3px',
             },
           }}
         >
-          <Send sx={{ fontSize: { xs: 20, sm: 18 } }} />
-        </IconButton>
-      </Box>
-    </Box>
+          {chat.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 6, color: 'text.secondary' }}>
+              <Chat sx={{ fontSize: 64, opacity: 0.2, mb: 2 }} />
+              <Typography variant="h6" fontWeight="500" mb={1}>No messages yet</Typography>
+              <Typography variant="body2">Start the conversation!</Typography>
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {chat.map((msg, idx) => {
+                const isOwnMessage = msg.username === (user?.username || user?.firstName || "Anonymous")
+                return (
+                  <Grow key={idx} in timeout={300} style={{ transitionDelay: `${idx * 50}ms` }}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: isOwnMessage ? 'flex-end' : 'flex-start',
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{ 
+                          color: 'text.secondary', 
+                          mb: 0.5, 
+                          px: 1,
+                          fontWeight: 500
+                        }}
+                      >
+                        {msg.username}
+                      </Typography>
+                      <Paper
+                        elevation={0}
+                        sx={{
+                          p: 2,
+                          maxWidth: '80%',
+                          borderRadius: 3,
+                          background: isOwnMessage
+                            ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                            : 'rgba(0,0,0,0.04)',
+                          color: isOwnMessage ? 'white' : 'text.primary',
+                          borderBottomRightRadius: isOwnMessage ? 0.5 : 3,
+                          borderBottomLeftRadius: isOwnMessage ? 3 : 0.5,
+                          boxShadow: isOwnMessage 
+                            ? '0 4px 12px rgba(102, 126, 234, 0.3)'
+                            : '0 2px 8px rgba(0,0,0,0.05)',
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ lineHeight: 1.5 }}>
+                          {msg.message}
+                        </Typography>
+                      </Paper>
+                    </Box>
+                  </Grow>
+                )
+              })}
+              <div ref={chatEndRef} />
+            </Box>
+          )}
+        </Box>
+
+        {/* Message Input */}
+        <Box
+          sx={{
+            p: 3,
+            borderTop: '1px solid rgba(0,0,0,0.08)',
+            display: 'flex',
+            gap: 2,
+            background: 'rgba(255,255,255,0.8)',
+          }}
+        >
+          <TextField
+            fullWidth
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            placeholder="Type a message..."
+            variant="outlined"
+            size="small"
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 4,
+                background: 'white',
+                border: '1px solid rgba(0,0,0,0.1)',
+                '&:hover': {
+                  border: '1px solid rgba(102, 126, 234, 0.3)',
+                },
+                '&.Mui-focused': {
+                  border: '1px solid #667eea',
+                  boxShadow: '0 0 0 3px rgba(102, 126, 234, 0.1)',
+                },
+                '& fieldset': { border: 'none' },
+              },
+            }}
+          />
+          <IconButton
+            onClick={handleSend}
+            disabled={!message.trim()}
+            sx={{
+              background: message.trim() 
+                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                : 'rgba(0,0,0,0.1)',
+              color: message.trim() ? 'white' : 'rgba(0,0,0,0.3)',
+              width: 48,
+              height: 48,
+              '&:hover': {
+                background: message.trim()
+                  ? 'linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%)'
+                  : 'rgba(0,0,0,0.15)',
+                transform: message.trim() ? 'scale(1.05)' : 'none',
+              },
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <Send />
+          </IconButton>
+        </Box>
+      </Paper>
+    </Slide>
   )
 
   return (
     <Box
       sx={{
-        minHeight: "100vh",
-        bgcolor: "#f8f9fa",
-        display: "flex",
-        flexDirection: "column",
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        display: 'flex',
+        flexDirection: 'column',
+        position: 'relative',
       }}
     >
       {!isStarted ? (
-        <Container maxWidth="sm" sx={{ flex: 1, display: "flex", alignItems: "center", py: 4 }}>
-          {/* User Button for pre-meeting */}
+        // Pre-call screen
+        <Container maxWidth="sm" sx={{ flex: 1, display: 'flex', alignItems: 'center', py: 4 }}>
+          {/* User Button */}
           <Box
             sx={{
-              position: "absolute",
-              top: { xs: 16, sm: 24 },
-              right: { xs: 16, sm: 24 },
+              position: 'absolute',
+              top: 24,
+              right: 24,
               zIndex: 10,
             }}
           >
@@ -859,388 +836,350 @@ const MeetingRoom = () => {
               appearance={{
                 elements: {
                   avatarBox: {
-                    width: isSmallMobile ? "36px" : "44px",
-                    height: isSmallMobile ? "36px" : "44px",
-                    borderRadius: "12px",
-                    border: "2px solid #e5e7eb",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '16px',
+                    border: '2px solid rgba(255,255,255,0.2)',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
                   },
                 },
               }}
             />
           </Box>
 
-          <Zoom in timeout={600}>
-            <Box
+          <Fade in timeout={800}>
+            <Card
               sx={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                textAlign: "center",
-                gap: { xs: 3, sm: 4 },
-                width: "100%",
-                px: { xs: 2, sm: 0 },
-                pt: { xs: 8, sm: 4 },
+                width: '100%',
+                borderRadius: 6,
+                boxShadow: '0 25px 50px rgba(0,0,0,0.15)',
+                overflow: 'hidden',
+                background: 'rgba(255,255,255,0.95)',
+                backdropFilter: 'blur(20px)',
+                border: '1px solid rgba(255,255,255,0.2)',
               }}
             >
-              <Box
-                sx={{
-                  width: { xs: 80, sm: 100, md: 120 },
-                  height: { xs: 80, sm: 100, md: 120 },
-                  borderRadius: "50%",
-                  bgcolor: "white",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
-                  mb: 2,
-                }}
-              >
-                <VideoCall sx={{ fontSize: { xs: 40, sm: 50, md: 60 }, color: "#1976d2" }} />
-              </Box>
-
-              <Box>
-                <Typography
-                  variant="h4"
-                  fontWeight="600"
-                  color="#1a1a1a"
-                  sx={{
-                    mb: 1,
-                    fontSize: { xs: "1.5rem", sm: "1.75rem", md: "2rem" },
-                  }}
-                >
-                  Join Meeting
-                </Typography>
-                <Typography
-                  variant="body1"
-                  color="#6b7280"
-                  sx={{
-                    mb: 4,
-                    fontSize: { xs: "0.9rem", sm: "1rem" },
-                    wordBreak: "break-all",
-                  }}
-                >
-                  Room: {roomId}
-                </Typography>
-              </Box>
-
-              {error && (
-                <Paper
-                  sx={{
-                    p: { xs: 2.5, sm: 3 },
-                    bgcolor: "#fef2f2",
-                    border: "1px solid #fecaca",
-                    borderRadius: 2,
-                    width: "100%",
-                    maxWidth: 400,
-                  }}
-                >
-                  <Typography color="#dc2626" sx={{ fontSize: { xs: "0.85rem", sm: "0.875rem" } }}>
-                    {error}
-                  </Typography>
-                </Paper>
-              )}
-
-              <Button
-                onClick={startMeeting}
-                disabled={isLoading}
-                startIcon={isLoading ? <CircularProgress size={20} /> : <PlayArrow />}
-                sx={{
-                  px: { xs: 4, sm: 6 },
-                  py: { xs: 2, sm: 2 },
-                  borderRadius: 2,
-                  fontSize: { xs: "0.95rem", sm: "1rem" },
-                  fontWeight: "600",
-                  bgcolor: "#1976d2",
-                  color: "white",
-                  textTransform: "none",
-                  boxShadow: "0 2px 8px rgba(25,118,210,0.2)",
-                  minHeight: { xs: 48, sm: 56 },
-                  width: { xs: "100%", sm: "auto" },
-                  maxWidth: { xs: "280px", sm: "none" },
-                  "&:hover": {
-                    bgcolor: "#1565c0",
-                    boxShadow: "0 4px 12px rgba(25,118,210,0.3)",
-                  },
-                  "&:disabled": {
-                    bgcolor: "#e5e7eb",
-                    color: "#9ca3af",
-                  },
-                }}
-              >
-                {isLoading ? "Starting..." : "Start Meeting"}
-              </Button>
-
-              <Paper
-                sx={{
-                  p: { xs: 2.5, sm: 3 },
-                  bgcolor: "white",
-                  borderRadius: 2,
-                  border: "1px solid #e5e7eb",
-                  width: "100%",
-                  maxWidth: 500,
-                }}
-              >
-                <Typography
-                  variant="body2"
-                  color="#6b7280"
-                  sx={{
-                    mb: 2,
-                    fontSize: { xs: "0.85rem", sm: "0.875rem" },
-                  }}
-                >
-                  Share this link to invite others:
-                </Typography>
-                <Box
-                  sx={{
-                    p: 2,
-                    bgcolor: "#f9fafb",
-                    borderRadius: 1,
-                    border: "1px solid #e5e7eb",
-                    fontFamily: "monospace",
-                    fontSize: { xs: "0.75rem", sm: "0.875rem" },
-                    color: "#374151",
-                    wordBreak: "break-all",
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {window.location.href}
-                </Box>
-              </Paper>
-            </Box>
-          </Zoom>
-        </Container>
-      ) : (
-        <>
-          {/* Mobile/Tablet Header */}
-          {isMobile && (
-            <AppBar
-              position="static"
-              elevation={0}
-              sx={{
-                bgcolor: "white",
-                borderBottom: "1px solid #e5e7eb",
-                color: "#1a1a1a",
-              }}
-            >
-              <Toolbar sx={{ justifyContent: "space-between", minHeight: { xs: 56, sm: 64 } }}>
-                <Box>
-                  <Typography variant="h6" fontWeight="600" sx={{ fontSize: { xs: "1rem", sm: "1.25rem" } }}>
-                    Meeting
-                  </Typography>
-                  <Typography variant="caption" color="#6b7280" sx={{ fontSize: { xs: "0.7rem", sm: "0.75rem" } }}>
-                    {roomId?.slice(0, 8)}...
-                  </Typography>
-                </Box>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  <Circle
+              <CardContent sx={{ p: 6, textAlign: 'center' }}>
+                <Zoom in timeout={1000} style={{ transitionDelay: '200ms' }}>
+                  <Box
                     sx={{
-                      fontSize: 8,
-                      color: isConnected ? "#10b981" : "#f59e0b",
-                    }}
-                  />
-                  <Button
-                    onClick={handleLeaveMeeting}
-                    startIcon={<CallEnd />}
-                    size="small"
-                    sx={{
-                      px: 2,
-                      py: 0.5,
-                      borderRadius: 2,
-                      fontSize: "0.8rem",
-                      fontWeight: "600",
-                      bgcolor: "#dc2626",
-                      color: "white",
-                      textTransform: "none",
-                      "&:hover": {
-                        bgcolor: "#b91c1c",
+                      width: 140,
+                      height: 140,
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      mx: 'auto',
+                      mb: 4,
+                      boxShadow: '0 20px 40px rgba(102, 126, 234, 0.3)',
+                      position: 'relative',
+                      '&::before': {
+                        content: '""',
+                        position: 'absolute',
+                        inset: -4,
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        opacity: 0.3,
+                        animation: 'pulse 2s infinite',
+                      },
+                      '@keyframes pulse': {
+                        '0%, 100%': { transform: 'scale(1)', opacity: 0.3 },
+                        '50%': { transform: 'scale(1.1)', opacity: 0.1 },
                       },
                     }}
                   >
-                    Leave
-                  </Button>
-                  <UserButton
-                    appearance={{
-                      elements: {
-                        avatarBox: {
-                          width: "32px",
-                          height: "32px",
-                          borderRadius: "8px",
-                          border: "2px solid #e5e7eb",
-                        },
-                      },
-                    }}
-                  />
-                </Box>
-              </Toolbar>
-            </AppBar>
-          )}
-
-          <Box
-            sx={{
-              flex: 1,
-              display: "flex",
-              flexDirection: { xs: "column", lg: "row" },
-              gap: { xs: 0, lg: 3 },
-              p: { xs: 0, lg: 3 },
-              height: isMobile ? "calc(100vh - 56px)" : "calc(100vh - 100px)",
-            }}
-          >
-            {/* Main Video Area */}
-            <Box
-              sx={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                gap: { xs: 0, lg: 2 },
-                height: "100%",
-              }}
-            >
-              {/* Desktop Header */}
-              {!isMobile && (
-                <Paper
-                  sx={{
-                    p: 3,
-                    bgcolor: "white",
-                    borderRadius: 2,
-                    border: "1px solid #e5e7eb",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                    <Typography variant="h6" fontWeight="600" color="#1a1a1a">
-                      Meeting Room
-                    </Typography>
-                    <Typography variant="body2" color="#6b7280">
-                      {roomId}
-                    </Typography>
+                    <VideoCall sx={{ fontSize: 70, color: 'white' }} />
                   </Box>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                      <Circle
-                        sx={{
-                          fontSize: 8,
-                          color: isConnected ? "#10b981" : "#f59e0b",
-                        }}
-                      />
-                      <Typography variant="body2" color="#6b7280">
-                        {isConnected ? "Connected" : "Waiting for others"}
+                </Zoom>
+
+                <Slide direction="up" in timeout={800} style={{ transitionDelay: '400ms' }}>
+                  <Box mb={4}>
+                    <Typography variant="h3" fontWeight="bold" color="text.primary" mb={2}>
+                      Join Video Call
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                      <Typography variant="h6" color="text.secondary">
+                        Room:
                       </Typography>
+                      <Chip 
+                        label={roomId} 
+                        variant="outlined" 
+                        sx={{ 
+                          fontWeight: 'bold',
+                          fontSize: '1rem',
+                          height: 36,
+                          borderRadius: 3,
+                          border: '2px solid #667eea',
+                          color: '#667eea',
+                        }} 
+                      />
                     </Box>
-                    <Button
-                      onClick={handleLeaveMeeting}
-                      startIcon={<CallEnd />}
-                      sx={{
-                        px: 3,
-                        py: 1,
-                        borderRadius: 2,
-                        fontSize: "0.875rem",
-                        fontWeight: "600",
-                        bgcolor: "#dc2626",
-                        color: "white",
-                        textTransform: "none",
-                        "&:hover": {
-                          bgcolor: "#b91c1c",
-                          transform: "translateY(-1px)",
-                        },
-                        transition: "all 0.2s ease",
+                  </Box>
+                </Slide>
+
+                {error && (
+                  <Grow in timeout={500}>
+                    <Alert 
+                      severity="error" 
+                      sx={{ 
+                        mb: 4, 
+                        borderRadius: 3,
+                        '& .MuiAlert-icon': { fontSize: '1.5rem' },
+                        boxShadow: '0 4px 12px rgba(220, 38, 38, 0.15)',
                       }}
                     >
-                      Leave
-                    </Button>
-                    <UserButton
-                      appearance={{
-                        elements: {
-                          avatarBox: {
-                            width: "36px",
-                            height: "36px",
-                            borderRadius: "10px",
-                            border: "2px solid #e5e7eb",
-                            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                          },
-                        },
-                      }}
-                    />
-                  </Box>
-                </Paper>
-              )}
+                      {error}
+                    </Alert>
+                  </Grow>
+                )}
 
-              {/* SCREEN SHARING SECTION */}
-              {(isScreenSharing || remoteScreenSharing) && (
-                <Box sx={{ mb: { xs: 1, md: 2 } }}>
-                  {/* Main Screen Share Display */}
+                <Zoom in timeout={800} style={{ transitionDelay: '600ms' }}>
+                  <Button
+                    onClick={startMeeting}
+                    disabled={isLoading}
+                    variant="contained"
+                    size="large"
+                    startIcon={isLoading ? <CircularProgress size={24} color="inherit" /> : <PlayArrow />}
+                    sx={{
+                      py: 3,
+                      px: 8,
+                      borderRadius: 5,
+                      fontSize: '1.3rem',
+                      fontWeight: 'bold',
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      boxShadow: '0 15px 30px rgba(102, 126, 234, 0.3)',
+                      mb: 4,
+                      '&:hover': {
+                        transform: 'translateY(-3px)',
+                        boxShadow: '0 20px 40px rgba(102, 126, 234, 0.4)',
+                      },
+                      '&:active': {
+                        transform: 'translateY(-1px)',
+                      },
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    }}
+                  >
+                    {isLoading ? 'Starting...' : 'Start Call'}
+                  </Button>
+                </Zoom>
+
+                <Slide direction="up" in timeout={800} style={{ transitionDelay: '800ms' }}>
                   <Paper
                     sx={{
-                      bgcolor: "white",
-                      borderRadius: { xs: 1, md: 2 },
-                      border: "1px solid #e5e7eb",
-                      overflow: "hidden",
-                      position: "relative",
-                      height: { xs: "250px", sm: "300px", md: "350px" },
-                      mb: 2,
+                      p: 4,
+                      bgcolor: 'rgba(248,250,252,0.8)',
+                      borderRadius: 4,
+                      border: '1px solid rgba(0,0,0,0.05)',
                     }}
                   >
+                    <Typography variant="body1" color="text.secondary" mb={3} fontWeight="500">
+                      Share this link to invite others:
+                    </Typography>
                     <Box
                       sx={{
-                        position: "absolute",
-                        top: { xs: 8, md: 16 },
-                        left: { xs: 8, md: 16 },
-                        zIndex: 2,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
+                        p: 3,
+                        bgcolor: 'white',
+                        borderRadius: 3,
+                        border: '1px solid rgba(0,0,0,0.1)',
+                        fontFamily: 'monospace',
+                        fontSize: '0.95rem',
+                        wordBreak: 'break-all',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 2,
                       }}
                     >
-                      <PresentToAll sx={{ fontSize: 16, color: "white" }} />
-                      <Chip
-                        label={isScreenSharing ? "Your Screen" : `${isConnected ? "Participant's" : "Remote"} Screen`}
-                        size="small"
-                        sx={{
-                          bgcolor: "rgba(0,0,0,0.8)",
-                          color: "white",
-                          fontSize: { xs: "0.7rem", md: "0.75rem" },
-                          height: { xs: 20, md: 24 },
-                          backdropFilter: "blur(10px)",
-                        }}
-                      />
-                      {screenShareStatus && (
-                        <Chip
-                          label={screenShareStatus}
-                          size="small"
-                          icon={screenShareStatus === 'error' ? <Warning /> : <CircularProgress size={12} />}
+                      <Typography sx={{ flex: 1 }}>{window.location.href}</Typography>
+                      <Tooltip title="Copy link">
+                        <IconButton 
+                          onClick={copyRoomLink} 
                           sx={{
-                            bgcolor: screenShareStatus === 'error' ? "rgba(220,38,38,0.9)" : "rgba(59,130,246,0.9)",
-                            color: "white",
-                            fontSize: "0.7rem",
-                            height: 20,
+                            bgcolor: 'rgba(102, 126, 234, 0.1)',
+                            '&:hover': {
+                              bgcolor: '#667eea',
+                              color: 'white',
+                              transform: 'scale(1.1)',
+                            },
+                            transition: 'all 0.2s ease',
                           }}
-                        />
-                      )}
+                        >
+                          <ContentCopy />
+                        </IconButton>
+                      </Tooltip>
                     </Box>
+                  </Paper>
+                </Slide>
+              </CardContent>
+            </Card>
+          </Fade>
+        </Container>
+      ) : (
+        // In-call screen
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          {/* Header */}
+          <Slide direction="down" in timeout={500}>
+            <Paper
+              sx={{
+                m: 2,
+                p: 3,
+                borderRadius: 5,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'rgba(255,255,255,0.95)',
+                backdropFilter: 'blur(20px)',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <Avatar
+                  sx={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    width: 48,
+                    height: 48,
+                  }}
+                >
+                  <VideoCall sx={{ fontSize: 24 }} />
+                </Avatar>
+                <Box>
+                  <Typography variant="h5" fontWeight="bold">
+                    Video Call
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Room: {roomId}
+                  </Typography>
+                </Box>
+              </Box>
 
-                    <video
-                      ref={isScreenSharing ? localScreenRef : remoteScreenRef}
-                      autoPlay
-                      playsInline
-                      muted={isScreenSharing}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "contain",
-                        background: "#000",
-                      }}
-                    />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Chip
+                  icon={
+                    isConnected ? (
+                      <Circle sx={{ fontSize: 12, color: '#10b981' }} />
+                    ) : (
+                      <CircularProgress size={12} />
+                    )
+                  }
+                  label={isConnected ? 'Connected' : 'Connecting...'}
+                  color={isConnected ? 'success' : 'warning'}
+                  variant="outlined"
+                  sx={{ borderRadius: 3, fontWeight: 500 }}
+                />
 
-                    {/* Screen Share Controls */}
-                    {isScreenSharing && (
+                <Tooltip title="Share room link">
+                  <IconButton 
+                    onClick={copyRoomLink} 
+                    sx={{ 
+                      borderRadius: 3,
+                      '&:hover': { bgcolor: 'rgba(102, 126, 234, 0.1)' }
+                    }}
+                  >
+                    <ContentCopy />
+                  </IconButton>
+                </Tooltip>
+
+                <Tooltip title="Toggle fullscreen">
+                  <IconButton 
+                    onClick={toggleFullscreen} 
+                    sx={{ 
+                      borderRadius: 3,
+                      '&:hover': { bgcolor: 'rgba(102, 126, 234, 0.1)' }
+                    }}
+                  >
+                    {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
+                  </IconButton>
+                </Tooltip>
+
+                <Button
+                  onClick={() => setShowLeaveDialog(true)}
+                  variant="contained"
+                  color="error"
+                  startIcon={<CallEnd />}
+                  sx={{ 
+                    borderRadius: 4,
+                    px: 3,
+                    py: 1.5,
+                    fontWeight: 'bold',
+                  }}
+                >
+                  Leave
+                </Button>
+
+                <UserButton
+                  appearance={{
+                    elements: {
+                      avatarBox: {
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '12px',
+                        border: '2px solid rgba(0,0,0,0.1)',
+                      },
+                    },
+                  }}
+                />
+              </Box>
+            </Paper>
+          </Slide>
+
+          {/* Video Area */}
+          <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Screen Share Display */}
+            {(isScreenSharing || remoteScreenSharing) && (
+              <Grow in timeout={500}>
+                <Paper
+                  sx={{
+                    height: '60vh',
+                    borderRadius: 5,
+                    overflow: 'hidden',
+                    position: 'relative',
+                    bgcolor: 'black',
+                    boxShadow: '0 15px 35px rgba(0,0,0,0.2)',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: 20,
+                      left: 20,
+                      zIndex: 2,
+                      bgcolor: 'rgba(0,0,0,0.8)',
+                      color: 'white',
+                      px: 3,
+                      py: 1.5,
+                      borderRadius: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.5,
+                      backdropFilter: 'blur(10px)',
+                    }}
+                  >
+                    <PresentToAll sx={{ fontSize: 20 }} />
+                    <Typography variant="body1" fontWeight="bold">
+                      {isScreenSharing ? 'Your Screen' : 'Remote Screen'}
+                    </Typography>
+                  </Box>
+
+                  <video
+                    ref={isScreenSharing ? localScreenRef : remoteScreenRef}
+                    autoPlay
+                    playsInline
+                    muted={isScreenSharing}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                    }}
+                  />
+
+                  {isScreenSharing && (
+                    <Fade in={showControls} timeout={300}>
                       <Box
                         sx={{
-                          position: "absolute",
-                          bottom: { xs: 8, md: 16 },
-                          right: { xs: 8, md: 16 },
+                          position: 'absolute',
+                          bottom: 20,
+                          right: 20,
                           zIndex: 2,
                         }}
                       >
@@ -1248,500 +1187,379 @@ const MeetingRoom = () => {
                           onClick={stopScreenShare}
                           disabled={screenShareStatus === 'stopping'}
                           sx={{
-                            bgcolor: "#dc2626",
-                            color: "white",
-                            "&:hover": {
-                              bgcolor: "#b91c1c",
+                            bgcolor: '#dc2626',
+                            color: 'white',
+                            width: 56,
+                            height: 56,
+                            '&:hover': {
+                              bgcolor: '#b91c1c',
+                              transform: 'scale(1.1)',
                             },
-                            "&:disabled": {
-                              bgcolor: "#9ca3af",
-                            },
+                            transition: 'all 0.2s ease',
                           }}
                         >
                           {screenShareStatus === 'stopping' ? (
-                            <CircularProgress size={16} color="inherit" />
+                            <CircularProgress size={24} color="inherit" />
                           ) : (
-                            <StopScreenShare sx={{ fontSize: { xs: 16, md: 20 } }} />
+                            <StopScreenShare sx={{ fontSize: 24 }} />
                           )}
                         </IconButton>
                       </Box>
-                    )}
-                  </Paper>
+                    </Fade>
+                  )}
+                </Paper>
+              </Grow>
+            )}
 
-                  {/* Participants Row During Screen Share */}
-                  <Box
-                    sx={{
-                      display: "flex",
-                      gap: 2,
-                      height: { xs: "120px", sm: "140px", md: "160px" },
-                    }}
-                  >
-                    {/* Your Video - Smaller during screen share */}
-                    <Paper
-                      sx={{
-                        flex: 1,
-                        bgcolor: "white",
-                        borderRadius: { xs: 1, md: 2 },
-                        border: "1px solid #e5e7eb",
-                        overflow: "hidden",
-                        position: "relative",
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          top: 8,
-                          left: 8,
-                          zIndex: 2,
-                        }}
-                      >
-                        <Chip
-                          label="You"
-                          size="small"
-                          sx={{
-                            bgcolor: "rgba(0,0,0,0.7)",
-                            color: "white",
-                            fontSize: "0.7rem",
-                            height: 20,
-                          }}
-                        />
-                      </Box>
-                      <video
-                        ref={userVideoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          background: "#000",
-                          transform: "scaleX(-1)",
-                        }}
-                      />
-                    </Paper>
-
-                    {/* Participant Video - Smaller during screen share */}
-                    <Paper
-                      sx={{
-                        flex: 1,
-                        bgcolor: "white",
-                        borderRadius: { xs: 1, md: 2 },
-                        border: "1px solid #e5e7eb",
-                        overflow: "hidden",
-                        position: "relative",
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          top: 8,
-                          left: 8,
-                          zIndex: 2,
-                        }}
-                      >
-                        <Chip
-                          label={isConnected ? "Participant" : "Waiting..."}
-                          size="small"
-                          sx={{
-                            bgcolor: "rgba(0,0,0,0.7)",
-                            color: "white",
-                            fontSize: "0.7rem",
-                            height: 20,
-                          }}
-                        />
-                      </Box>
-                      <video
-                        ref={remoteVideoRef}
-                        autoPlay
-                        playsInline
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          background: "#000",
-                        }}
-                      />
-                      {!isConnected && (
-                        <Box
-                          sx={{
-                            position: "absolute",
-                            top: "50%",
-                            left: "50%",
-                            transform: "translate(-50%, -50%)",
-                            textAlign: "center",
-                            color: "white",
-                          }}
-                        >
-                          <CircularProgress sx={{ color: "white", mb: 1 }} size={24} />
-                          <Typography variant="caption" sx={{ fontSize: "0.7rem" }}>
-                            Waiting...
-                          </Typography>
-                        </Box>
-                      )}
-                    </Paper>
-                  </Box>
-                </Box>
-              )}
-
-              {/* MAIN PARTICIPANT VIDEO SECTION */}
-              <Box
-                sx={{
-                  display: "flex",
-                  flexDirection: { xs: "column", md: "row" },
-                  gap: { xs: 1, md: 2 },
-                  flex: 1,
-                  p: { xs: 1, lg: 0 },
-                }}
-              >
-                {/* Local Video */}
+            {/* Participant Videos */}
+            <Box
+              sx={{
+                height: isScreenSharing || remoteScreenSharing ? '35vh' : '70vh',
+                display: 'flex',
+                gap: 2,
+              }}
+            >
+              {/* Local Video */}
+              <Grow in timeout={500}>
                 <Paper
                   sx={{
                     flex: 1,
-                    bgcolor: "white",
-                    borderRadius: { xs: 1, md: 2 },
-                    border: "1px solid #e5e7eb",
-                    overflow: "hidden",
-                    position: "relative",
-                    minHeight: { xs: "200px", sm: "250px", md: "auto" },
+                    borderRadius: 5,
+                    overflow: 'hidden',
+                    position: 'relative',
+                    bgcolor: 'black',
+                    boxShadow: '0 15px 35px rgba(0,0,0,0.2)',
                   }}
                 >
                   <Box
                     sx={{
-                      position: "absolute",
-                      top: { xs: 8, md: 16 },
-                      left: { xs: 8, md: 16 },
+                      position: 'absolute',
+                      top: 20,
+                      left: 20,
                       zIndex: 2,
+                      bgcolor: 'rgba(0,0,0,0.8)',
+                      color: 'white',
+                      px: 3,
+                      py: 1.5,
+                      borderRadius: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.5,
+                      backdropFilter: 'blur(10px)',
                     }}
                   >
-                    <Chip
-                      label="You"
-                      size="small"
-                      sx={{
-                        bgcolor: "rgba(0,0,0,0.7)",
-                        color: "white",
-                        fontSize: { xs: "0.7rem", md: "0.75rem" },
-                        height: { xs: 20, md: 24 },
-                      }}
-                    />
+                    <Avatar sx={{ width: 20, height: 20, bgcolor: '#667eea' }}>
+                      <Typography variant="caption" fontWeight="bold">
+                        {user?.firstName?.[0] || 'Y'}
+                      </Typography>
+                    </Avatar>
+                    <Typography variant="body1" fontWeight="bold">You</Typography>
                   </Box>
+
                   <video
                     ref={userVideoRef}
                     autoPlay
                     playsInline
                     muted
                     style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      background: "#000",
-                      cursor: "pointer",
-                      transform: "scaleX(-1)",
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      transform: 'scaleX(-1)',
                     }}
                   />
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      bottom: { xs: 8, md: 16 },
-                      left: "50%",
-                      transform: "translateX(-50%)",
-                      display: "flex",
-                      gap: 1,
-                    }}
-                  >
-                    <IconButton
-                      onClick={toggleAudio}
-                      sx={{
-                        width: { xs: 36, md: 44 },
-                        height: { xs: 36, md: 44 },
-                        bgcolor: isAudioMuted ? "#dc2626" : "rgba(255,255,255,0.9)",
-                        color: isAudioMuted ? "white" : "#374151",
-                        "&:hover": {
-                          bgcolor: isAudioMuted ? "#b91c1c" : "white",
-                        },
-                      }}
-                    >
-                      {isAudioMuted ? (
-                        <MicOff sx={{ fontSize: { xs: 16, md: 20 } }} />
-                      ) : (
-                        <Mic sx={{ fontSize: { xs: 16, md: 20 } }} />
-                      )}
-                    </IconButton>
-                    <IconButton
-                      onClick={toggleVideo}
-                      sx={{
-                        width: { xs: 36, md: 44 },
-                        height: { xs: 36, md: 44 },
-                        bgcolor: isVideoMuted ? "#dc2626" : "rgba(255,255,255,0.9)",
-                        color: isVideoMuted ? "white" : "#374151",
-                        "&:hover": {
-                          bgcolor: isVideoMuted ? "#b91c1c" : "white",
-                        },
-                      }}
-                    >
-                      {isVideoMuted ? (
-                        <VideocamOff sx={{ fontSize: { xs: 16, md: 20 } }} />
-                      ) : (
-                        <Videocam sx={{ fontSize: { xs: 16, md: 20 } }} />
-                      )}
-                    </IconButton>
-                    {/* Enhanced Screen Share Button */}
-                    <IconButton
-                      onClick={isScreenSharing ? stopScreenShare : startScreenShare}
-                      disabled={screenShareStatus === 'starting' || screenShareStatus === 'stopping'}
-                      sx={{
-                        width: { xs: 36, md: 44 },
-                        height: { xs: 36, md: 44 },
-                        bgcolor: isScreenSharing ? "#dc2626" : "rgba(255,255,255,0.9)",
-                        color: isScreenSharing ? "white" : "#374151",
-                        "&:hover": {
-                          bgcolor: isScreenSharing ? "#b91c1c" : "white",
-                        },
-                        "&:disabled": {
-                          bgcolor: "#9ca3af",
-                          color: "white",
-                        },
-                      }}
-                    >
-                      {screenShareStatus === 'starting' || screenShareStatus === 'stopping' ? (
-                        <CircularProgress size={16} color="inherit" />
-                      ) : isScreenSharing ? (
-                        <StopScreenShare sx={{ fontSize: { xs: 16, md: 20 } }} />
-                      ) : (
-                        <ScreenShare sx={{ fontSize: { xs: 16, md: 20 } }} />
-                      )}
-                    </IconButton>
-                  </Box>
-                </Paper>
 
-                {/* Remote Video */}
+                  {/* Enhanced Controls */}
+                  <Fade in={showControls} timeout={300}>
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        bottom: 20,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        display: 'flex',
+                        gap: 2,
+                        background: 'rgba(0,0,0,0.8)',
+                        borderRadius: 5,
+                        p: 2,
+                        backdropFilter: 'blur(10px)',
+                      }}
+                    >
+                      <Tooltip title={isAudioMuted ? 'Unmute' : 'Mute'}>
+                        <IconButton
+                          onClick={toggleAudio}
+                          sx={{
+                            bgcolor: isAudioMuted ? '#dc2626' : 'rgba(255,255,255,0.2)',
+                            color: 'white',
+                            width: 48,
+                            height: 48,
+                            '&:hover': {
+                              bgcolor: isAudioMuted ? '#b91c1c' : 'rgba(255,255,255,0.3)',
+                              transform: 'scale(1.1)',
+                            },
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          {isAudioMuted ? <MicOff /> : <Mic />}
+                        </IconButton>
+                      </Tooltip>
+
+                      <Tooltip title={isVideoMuted ? 'Turn on camera' : 'Turn off camera'}>
+                        <IconButton
+                          onClick={toggleVideo}
+                          sx={{
+                            bgcolor: isVideoMuted ? '#dc2626' : 'rgba(255,255,255,0.2)',
+                            color: 'white',
+                            width: 48,
+                            height: 48,
+                            '&:hover': {
+                              bgcolor: isVideoMuted ? '#b91c1c' : 'rgba(255,255,255,0.3)',
+                              transform: 'scale(1.1)',
+                            },
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          {isVideoMuted ? <VideocamOff /> : <Videocam />}
+                        </IconButton>
+                      </Tooltip>
+
+                      <Tooltip title={isScreenSharing ? 'Stop sharing' : 'Share screen'}>
+                        <IconButton
+                          onClick={isScreenSharing ? stopScreenShare : startScreenShare}
+                          disabled={screenShareStatus === 'starting' || screenShareStatus === 'stopping'}
+                          sx={{
+                            bgcolor: isScreenSharing ? '#dc2626' : 'rgba(255,255,255,0.2)',
+                            color: 'white',
+                            width: 48,
+                            height: 48,
+                            '&:hover': {
+                              bgcolor: isScreenSharing ? '#b91c1c' : 'rgba(255,255,255,0.3)',
+                              transform: 'scale(1.1)',
+                            },
+                            '&:disabled': {
+                              bgcolor: 'rgba(255,255,255,0.1)',
+                              color: 'rgba(255,255,255,0.5)',
+                            },
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          {screenShareStatus === 'starting' || screenShareStatus === 'stopping' ? (
+                            <CircularProgress size={20} color="inherit" />
+                          ) : isScreenSharing ? (
+                            <StopScreenShare />
+                          ) : (
+                            <ScreenShare />
+                          )}
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Fade>
+                </Paper>
+              </Grow>
+
+              {/* Remote Video */}
+              <Grow in timeout={500} style={{ transitionDelay: '200ms' }}>
                 <Paper
                   sx={{
                     flex: 1,
-                    bgcolor: "white",
-                    borderRadius: { xs: 1, md: 2 },
-                    border: "1px solid #e5e7eb",
-                    overflow: "hidden",
-                    position: "relative",
-                    minHeight: { xs: "200px", sm: "250px", md: "auto" },
+                    borderRadius: 5,
+                    overflow: 'hidden',
+                    position: 'relative',
+                    bgcolor: 'black',
+                    boxShadow: '0 15px 35px rgba(0,0,0,0.2)',
                   }}
                 >
                   <Box
                     sx={{
-                      position: "absolute",
-                      top: { xs: 8, md: 16 },
-                      left: { xs: 8, md: 16 },
+                      position: 'absolute',
+                      top: 20,
+                      left: 20,
                       zIndex: 2,
+                      bgcolor: 'rgba(0,0,0,0.8)',
+                      color: 'white',
+                      px: 3,
+                      py: 1.5,
+                      borderRadius: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.5,
+                      backdropFilter: 'blur(10px)',
                     }}
                   >
-                    <Chip
-                      label={isConnected ? "Participant" : "Waiting..."}
-                      size="small"
-                      sx={{
-                        bgcolor: "rgba(0,0,0,0.7)",
-                        color: "white",
-                        fontSize: { xs: "0.7rem", md: "0.75rem" },
-                        height: { xs: 20, md: 24 },
-                      }}
-                    />
+                    <Avatar sx={{ width: 20, height: 20, bgcolor: isConnected ? '#10b981' : '#f59e0b' }}>
+                      <Typography variant="caption" fontWeight="bold">
+                        {isConnected ? 'P' : '?'}
+                      </Typography>
+                    </Avatar>
+                    <Typography variant="body1" fontWeight="bold">
+                      {isConnected ? 'Participant' : 'Waiting...'}
+                    </Typography>
                   </Box>
+
                   <video
                     ref={remoteVideoRef}
                     autoPlay
                     playsInline
                     style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      background: "#000",
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
                     }}
                   />
+
                   {!isConnected && (
-                    <Box
-                      sx={{
-                        position: "absolute",
-                        top: "50%",
-                        left: "50%",
-                        transform: "translate(-50%, -50%)",
-                        textAlign: "center",
-                        color: "white",
-                      }}
-                    >
-                      <CircularProgress sx={{ color: "white", mb: 2 }} size={40} />
-                      <Typography variant="body2" sx={{ fontSize: { xs: "0.8rem", md: "0.875rem" } }}>
-                        Waiting for participant...
-                      </Typography>
-                    </Box>
+                    <Fade in timeout={500}>
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: '50%',
+                          left: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          textAlign: 'center',
+                          color: 'white',
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 80,
+                            height: 80,
+                            borderRadius: '50%',
+                            border: '3px solid rgba(255,255,255,0.3)',
+                            borderTop: '3px solid white',
+                            animation: 'spin 1s linear infinite',
+                            mx: 'auto',
+                            mb: 3,
+                            '@keyframes spin': {
+                              '0%': { transform: 'rotate(0deg)' },
+                              '100%': { transform: 'rotate(360deg)' },
+                            },
+                          }}
+                        />
+                        <Typography variant="h6" fontWeight="bold" mb={1}>
+                          Waiting for participant...
+                        </Typography>
+                        <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                          Share the room link to invite others
+                        </Typography>
+                      </Box>
+                    </Fade>
                   )}
                 </Paper>
-              </Box>
-
-              {/* Share Link - Desktop only */}
-              {!isConnected && !isMobile && (
-                <Paper
-                  sx={{
-                    p: 3,
-                    bgcolor: "#eff6ff",
-                    border: "1px solid #bfdbfe",
-                    borderRadius: 2,
-                  }}
-                >
-                  <Typography variant="body2" color="#1e40af" sx={{ mb: 1, fontWeight: 500 }}>
-                    Invite others to join
-                  </Typography>
-                  <Box
-                    sx={{
-                      p: 2,
-                      bgcolor: "white",
-                      borderRadius: 1,
-                      border: "1px solid #bfdbfe",
-                      fontFamily: "monospace",
-                      fontSize: "0.875rem",
-                      color: "#374151",
-                      wordBreak: "break-all",
-                    }}
-                  >
-                    {window.location.href}
-                  </Box>
-                </Paper>
-              )}
+              </Grow>
             </Box>
-
-            {/* Desktop Chat Section */}
-            {!isMobile && (
-              <Paper
-                sx={{
-                  width: 360,
-                  bgcolor: "white",
-                  borderRadius: 2,
-                  border: "1px solid #e5e7eb",
-                  display: "flex",
-                  flexDirection: "column",
-                  height: "100%",
-                }}
-              >
-                <ChatComponent />
-              </Paper>
-            )}
           </Box>
 
-          {/* Mobile Chat FAB */}
-          {isMobile && (
-            <Fab
-              onClick={() => setIsChatOpen(true)}
+          {/* Floating Chat Button */}
+          <Zoom in timeout={500} style={{ transitionDelay: '1000ms' }}>
+            <Badge
+              badgeContent={unreadMessages}
+              color="error"
               sx={{
-                position: "fixed",
-                bottom: 20,
-                right: 20,
-                bgcolor: "#1976d2",
-                color: "white",
-                "&:hover": {
-                  bgcolor: "#1565c0",
-                },
+                position: 'fixed',
+                bottom: 32,
+                right: 32,
+                zIndex: 1000,
               }}
             >
-              <ChatBubble />
-            </Fab>
-          )}
-
-          {/* Mobile Chat Modal */}
-          <Dialog
-            open={isChatOpen}
-            onClose={() => setIsChatOpen(false)}
-            fullScreen={isMobile}
-            maxWidth="sm"
-            fullWidth
-            TransitionComponent={Slide}
-            TransitionProps={{
-              direction: "up",
-            }}
-            PaperProps={{
-              sx: {
-                ...(isMobile
-                  ? {
-                      margin: 0,
-                      borderRadius: 0,
-                      height: "100vh",
-                      maxHeight: "100vh",
-                    }
-                  : {
-                      borderRadius: 3,
-                      height: "80vh",
-                      maxHeight: "80vh",
-                    }),
-              },
-            }}
-            disableScrollLock
-            disableRestoreFocus
-            disableAutoFocus
-            disableEnforceFocus
-          >
-            <ChatComponent isDrawer={true} />
-          </Dialog>
-        </>
+              <IconButton
+                onClick={openChat}
+                sx={{
+                  width: 72,
+                  height: 72,
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: 'white',
+                  boxShadow: '0 15px 30px rgba(102, 126, 234, 0.3)',
+                  '&:hover': {
+                    transform: 'scale(1.1)',
+                    boxShadow: '0 20px 40px rgba(102, 126, 234, 0.4)',
+                  },
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+              >
+                <Chat sx={{ fontSize: 32 }} />
+              </IconButton>
+            </Badge>
+          </Zoom>
+        </Box>
       )}
 
-      {/* Leave Meeting Confirmation Dialog */}
+      {/* Chat Component */}
+      <ChatComponent />
+
+      {/* Leave Dialog */}
       <Dialog
         open={showLeaveDialog}
         onClose={() => setShowLeaveDialog(false)}
         PaperProps={{
           sx: {
-            borderRadius: 3,
-            p: 2,
-            minWidth: { xs: 280, sm: 400 },
-            mx: { xs: 2, sm: 0 },
+            borderRadius: 5,
+            p: 3,
+            background: 'rgba(255,255,255,0.95)',
+            backdropFilter: 'blur(20px)',
+            minWidth: 400,
           },
         }}
       >
-        <DialogTitle sx={{ textAlign: "center", pb: 2 }}>
-          <ExitToApp sx={{ fontSize: { xs: 40, sm: 48 }, color: "#dc2626", mb: 2 }} />
-          <Typography variant="h6" fontWeight="600" color="#1a1a1a" sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }}>
-            Leave Meeting?
+        <DialogTitle sx={{ textAlign: 'center', pb: 2 }}>
+          <Zoom in timeout={300}>
+            <Box
+              sx={{
+                width: 100,
+                height: 100,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mx: 'auto',
+                mb: 3,
+                boxShadow: '0 15px 30px rgba(239, 68, 68, 0.3)',
+              }}
+            >
+              <ExitToApp sx={{ fontSize: 50, color: 'white' }} />
+            </Box>
+          </Zoom>
+          <Typography variant="h4" fontWeight="bold">
+            Leave Call?
           </Typography>
         </DialogTitle>
-        <DialogContent sx={{ textAlign: "center", pb: 2 }}>
-          <Typography variant="body1" color="#6b7280" sx={{ fontSize: { xs: "0.9rem", sm: "1rem" } }}>
-            Are you sure you want to leave this meeting? This action cannot be undone.
+        <DialogContent sx={{ textAlign: 'center', pb: 3 }}>
+          <Typography variant="body1" color="text.secondary" fontSize="1.1rem">
+            Are you sure you want to leave this call? This action cannot be undone.
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ justifyContent: "center", gap: 2, px: 3, pb: 3 }}>
+        <DialogActions sx={{ justifyContent: 'center', gap: 3, p: 0 }}>
           <Button
             onClick={() => setShowLeaveDialog(false)}
-            sx={{
-              px: { xs: 3, sm: 4 },
-              py: 1,
-              borderRadius: 2,
-              color: "#6b7280",
-              border: "1px solid #e5e7eb",
-              fontSize: { xs: "0.85rem", sm: "0.875rem" },
-              "&:hover": {
-                bgcolor: "#f9fafb",
-              },
+            variant="outlined"
+            sx={{ 
+              borderRadius: 4,
+              px: 4,
+              py: 2,
+              fontSize: '1rem',
+              fontWeight: 'bold',
             }}
           >
             Cancel
           </Button>
           <Button
-            onClick={confirmLeaveMeeting}
-            sx={{
-              px: { xs: 3, sm: 4 },
-              py: 1,
-              borderRadius: 2,
-              bgcolor: "#dc2626",
-              color: "white",
-              fontSize: { xs: "0.85rem", sm: "0.875rem" },
-              "&:hover": {
-                bgcolor: "#b91c1c",
-              },
+            onClick={leaveMeeting}
+            variant="contained"
+            color="error"
+            sx={{ 
+              borderRadius: 4,
+              px: 4,
+              py: 2,
+              fontSize: '1rem',
+              fontWeight: 'bold',
             }}
           >
-            Leave Meeting
+            Leave Call
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Enhanced Notification Snackbar */}
+      {/* Notifications */}
       <Snackbar
         open={notification.open}
         autoHideDuration={4000}
@@ -1752,8 +1570,10 @@ const MeetingRoom = () => {
           onClose={() => setNotification({ ...notification, open: false })}
           severity={notification.severity}
           variant="filled"
-          sx={{
-            borderRadius: 2,
+          sx={{ 
+            borderRadius: 4,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
+            fontSize: '1rem',
             fontWeight: 500,
           }}
         >
