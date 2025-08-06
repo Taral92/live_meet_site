@@ -1,4 +1,7 @@
 module.exports = function setupSocket(io) {
+  // Map of roomId -> socketId (of who's sharing screen)
+  const activeScreenSharer = {};
+
   io.on('connection', (socket) => {
     console.log(`✅ New user connected: ${socket.id}`);
 
@@ -6,6 +9,10 @@ module.exports = function setupSocket(io) {
       socket.join(roomId);
       socket.to(roomId).emit('user-joined', { socketId: socket.id });
       console.log(`🎥 User ${socket.id} joined meeting room ${roomId}`);
+      // On join, inform about current screen sharer
+      if (activeScreenSharer[roomId]) {
+        socket.emit('screen-share-started', { sharer: activeScreenSharer[roomId] });
+      }
     });
 
     socket.on('join', (roomId) => {
@@ -37,9 +44,32 @@ module.exports = function setupSocket(io) {
       console.log(`ICE candidate sent from ${socket.id} to ${target}`);
     });
 
+    // --- SCREEN SHARING EVENTS ---
+    socket.on('start-screen-share', ({ roomId }) => {
+      // Allow only one - if already set, override with new one
+      activeScreenSharer[roomId] = socket.id;
+      // Notify everyone (including new sharer)
+      io.to(roomId).emit('screen-share-started', { sharer: socket.id });
+      console.log(`🖥️ Screen share started by ${socket.id} in room ${roomId}`);
+    });
+
+    socket.on('stop-screen-share', ({ roomId }) => {
+      // Only clear if this socket is the active sharer
+      if (activeScreenSharer[roomId] === socket.id) {
+        delete activeScreenSharer[roomId];
+        io.to(roomId).emit('screen-share-stopped', { sharer: socket.id });
+        console.log(`✋ Screen share stopped by ${socket.id} in room ${roomId}`);
+      }
+    });
+
     socket.on('leave-room', (roomId) => {
       socket.leave(roomId);
       socket.to(roomId).emit('user-left', { socketId: socket.id });
+      // If leaving user was sharing, stop their share
+      if (activeScreenSharer[roomId] === socket.id) {
+        delete activeScreenSharer[roomId];
+        io.to(roomId).emit('screen-share-stopped', { sharer: socket.id });
+      }
       console.log(`👋 User ${socket.id} left room ${roomId}`);
     });
 
@@ -47,6 +77,11 @@ module.exports = function setupSocket(io) {
       const rooms = Array.from(socket.rooms).filter((r) => r !== socket.id);
       rooms.forEach((roomId) => {
         socket.to(roomId).emit('user-left', { socketId: socket.id });
+        // If leaving user was sharing, stop their share
+        if (activeScreenSharer[roomId] === socket.id) {
+          delete activeScreenSharer[roomId];
+          io.to(roomId).emit('screen-share-stopped', { sharer: socket.id });
+        }
         console.log(`👋 User ${socket.id} is leaving room ${roomId}`);
       });
     });
@@ -56,3 +91,4 @@ module.exports = function setupSocket(io) {
     });
   });
 };
+
