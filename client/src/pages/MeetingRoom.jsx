@@ -1,5 +1,6 @@
 "use client"
-import { useEffect, useRef, useState } from "react"
+
+import { useEffect, useRef, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { io } from "socket.io-client"
 import { useUser } from "@clerk/clerk-react"
@@ -24,6 +25,9 @@ import {
   AppBar,
   Toolbar,
   Fab,
+  Snackbar,
+  Alert,
+  Slide,
 } from "@mui/material"
 import {
   Mic,
@@ -42,9 +46,11 @@ import {
   ScreenShare,
   StopScreenShare,
   PresentToAll,
+  Warning,
+  CheckCircle,
 } from "@mui/icons-material"
 
-const backendUrl = "https://live-meet-site.onrender.com"
+const backendUrl = "http://localhost:3000"
 
 const MeetingRoom = () => {
   const { roomId } = useParams()
@@ -55,17 +61,21 @@ const MeetingRoom = () => {
   const isTablet = useMediaQuery(theme.breakpoints.between("md", "lg"))
   const isSmallMobile = useMediaQuery(theme.breakpoints.down("sm"))
 
+  // Video refs
   const userVideoRef = useRef(null)
   const remoteVideoRef = useRef(null)
-  // Screen sharing refs - separate from video
   const localScreenRef = useRef(null)
   const remoteScreenRef = useRef(null)
+
+  // WebRTC refs
   const peerConnection = useRef(null)
   const streamRef = useRef(null)
   const screenStreamRef = useRef(null)
   const socketRef = useRef(null)
   const chatEndRef = useRef(null)
+  const remoteSocketId = useRef(null)
 
+  // States
   const [isStarted, setIsStarted] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState(null)
@@ -76,9 +86,204 @@ const MeetingRoom = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(false)
+
   // Screen sharing states
   const [isScreenSharing, setIsScreenSharing] = useState(false)
   const [remoteScreenSharing, setRemoteScreenSharing] = useState(false)
+  const [screenShareStatus, setScreenShareStatus] = useState(null) // 'starting', 'stopping', 'error'
+
+  // Notification states
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' })
+
+  // Helper function to show notifications
+  const showNotification = useCallback((message, severity = 'info') => {
+    setNotification({ open: true, message, severity })
+  }, [])
+
+  // Helper function to get video sender from peer connection
+  const getVideoSender = useCallback(() => {
+    if (!peerConnection.current) return null
+    const senders = peerConnection.current.getSenders()
+    return senders.find(sender => 
+      sender.track && sender.track.kind === 'video'
+    )
+  }, [])
+
+  // Helper function to replace video track
+  const replaceVideoTrack = useCallback(async (newTrack) => {
+    const videoSender = getVideoSender()
+    if (videoSender) {
+      try {
+        await videoSender.replaceTrack(newTrack)
+        console.log('Video track replaced successfully:', newTrack?.label || 'null')
+        return true
+      } catch (error) {
+        console.error('Failed to replace video track:', error)
+        return false
+      }
+    }
+    return false
+  }, [getVideoSender])
+
+  // Helper function to create offer and send to remote peer
+  const createAndSendOffer = useCallback(async () => {
+    if (!peerConnection.current || !remoteSocketId.current) {
+      console.error('Cannot create offer: missing peer connection or remote socket ID')
+      return false
+    }
+
+    try {
+      const offer = await peerConnection.current.createOffer()
+      await peerConnection.current.setLocalDescription(offer)
+      
+      socketRef.current.emit("offer", { 
+        offer, 
+        target: remoteSocketId.current 
+      }, roomId)
+      
+      console.log('Offer sent to:', remoteSocketId.current)
+      return true
+    } catch (error) {
+      console.error('Failed to create and send offer:', error)
+      return false
+    }
+  }, [roomId])
+
+  // Improved screen sharing function
+  const startScreenShare = useCallback(async () => {
+    if (isScreenSharing) return
+    
+    setScreenShareStatus('starting')
+    
+    try {
+      // Get screen share stream
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 },
+        },
+        audio: true,
+      })
+
+      const screenVideoTrack = screenStream.getVideoTracks()[0]
+      if (!screenVideoTrack) {
+        throw new Error('No video track in screen share stream')
+      }
+
+      // Store screen stream
+      screenStreamRef.current = screenStream
+      
+      // Only replace track if peer connection exists and is connected
+      if (peerConnection.current && isConnected) {
+        const replaced = await replaceVideoTrack(screenVideoTrack)
+        if (!replaced) {
+          // Fallback: add track if replace failed
+          peerConnection.current.addTrack(screenVideoTrack, screenStream)
+        }
+        
+        // Create and send new offer only if we have a remote peer
+        if (remoteSocketId.current) {
+          await createAndSendOffer()
+        }
+      }
+
+      // Update local display
+      if (localScreenRef.current) {
+        localScreenRef.current.srcObject = screenStream
+        localScreenRef.current.play().catch(console.error)
+      }
+
+      // Update states
+      setIsScreenSharing(true)
+      setScreenShareStatus(null)
+      
+      // Notify remote peer (even if not connected yet, for when they join)
+      socketRef.current.emit("screen-share-started", roomId)
+      showNotification('Screen sharing started', 'success')
+
+      // Handle screen share end (when user stops from browser UI)
+      screenVideoTrack.onended = () => {
+        console.log('Screen share ended by user')
+        stopScreenShare()
+      }
+
+    } catch (error) {
+      console.error('Screen share failed:', error)
+      setScreenShareStatus('error')
+      setIsScreenSharing(false)
+      screenStreamRef.current = null
+      
+      let errorMessage = 'Failed to start screen sharing'
+      if (error.name === 'NotAllowedError') {
+        errorMessage = 'Screen sharing permission denied'
+      } else if (error.name === 'NotSupportedError') {
+        errorMessage = 'Screen sharing not supported in this browser'
+      }
+      
+      showNotification(errorMessage, 'error')
+      setTimeout(() => setScreenShareStatus(null), 3000)
+    }
+  }, [isScreenSharing, isConnected, replaceVideoTrack, createAndSendOffer, roomId, showNotification])
+
+  // Improved stop screen sharing function
+  const stopScreenShare = useCallback(async () => {
+    if (!isScreenSharing) return
+    
+    setScreenShareStatus('stopping')
+    
+    try {
+      // Stop screen stream tracks
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach(track => {
+          track.stop()
+          console.log('Stopped screen track:', track.kind)
+        })
+        screenStreamRef.current = null
+      }
+
+      // Only replace track if peer connection exists and is connected
+      if (peerConnection.current && isConnected) {
+        // Get camera video track to restore
+        const cameraVideoTrack = streamRef.current?.getVideoTracks()[0]
+        
+        if (cameraVideoTrack) {
+          // Replace screen track with camera track
+          const replaced = await replaceVideoTrack(cameraVideoTrack)
+          if (!replaced) {
+            console.warn('Failed to replace track, camera may not be restored properly')
+          }
+        } else {
+          // No camera track available, replace with null to remove video
+          await replaceVideoTrack(null)
+        }
+
+        // Create and send new offer only if we have a remote peer
+        if (remoteSocketId.current) {
+          await createAndSendOffer()
+        }
+      }
+
+      // Clear local screen display
+      if (localScreenRef.current) {
+        localScreenRef.current.srcObject = null
+      }
+
+      // Update states
+      setIsScreenSharing(false)
+      setScreenShareStatus(null)
+      
+      // Notify remote peer
+      socketRef.current.emit("screen-share-stopped", roomId)
+      showNotification('Screen sharing stopped', 'info')
+
+  } catch (error) {
+    console.error('Failed to stop screen sharing:', error)
+    setScreenShareStatus('error')
+    showNotification('Error stopping screen share', 'error')
+    setTimeout(() => setScreenShareStatus(null), 3000)
+  }
+}, [isScreenSharing, isConnected, replaceVideoTrack, createAndSendOffer, roomId, showNotification])
 
   // Auto scroll chat to bottom
   useEffect(() => {
@@ -88,19 +293,26 @@ const MeetingRoom = () => {
   // Initialize socket when clerk is loaded
   useEffect(() => {
     if (!isLoaded) return
+
     socketRef.current = io(backendUrl, { transports: ["websocket"] })
 
     // Listen for chat messages
     socketRef.current.on("chat-message", (data) => {
-      setChat((prev) => [...prev, { username: data.username, message: data.message, timestamp: new Date() }])
+      setChat((prev) => [...prev, { 
+        username: data.username, 
+        message: data.message, 
+        timestamp: new Date() 
+      }])
     })
 
     // Screen sharing socket events
     socketRef.current.on("screen-share-started", () => {
+      console.log('Remote user started screen sharing')
       setRemoteScreenSharing(true)
     })
 
     socketRef.current.on("screen-share-stopped", () => {
+      console.log('Remote user stopped screen sharing')
       setRemoteScreenSharing(false)
       if (remoteScreenRef.current) {
         remoteScreenRef.current.srcObject = null
@@ -121,40 +333,54 @@ const MeetingRoom = () => {
     if (!isStarted || !isLoaded || !socketRef.current) return
 
     const socket = socketRef.current
-    let remoteSocketId = null
 
     // Join signaling rooms
     socket.emit("join-meeting", roomId)
     socket.emit("join", roomId)
 
     socket.on("user-joined", async ({ socketId }) => {
-      remoteSocketId = socketId
+      console.log('User joined:', socketId)
+      remoteSocketId.current = socketId
+      
       if (!peerConnection.current && streamRef.current) {
-        peerConnection.current = createPeerConnection(socket, remoteSocketId)
-        streamRef.current.getTracks().forEach((track) => peerConnection.current.addTrack(track, streamRef.current))
-        // Add screen tracks if sharing
-        if (screenStreamRef.current) {
-          screenStreamRef.current
-            .getTracks()
-            .forEach((track) => peerConnection.current.addTrack(track, screenStreamRef.current))
+        peerConnection.current = createPeerConnection(socket, socketId)
+        
+        // Add camera tracks
+        streamRef.current.getTracks().forEach((track) => {
+          peerConnection.current.addTrack(track, streamRef.current)
+        })
+
+        // If screen sharing is active, replace the video track
+        if (isScreenSharing && screenStreamRef.current) {
+          const screenVideoTrack = screenStreamRef.current.getVideoTracks()[0]
+          if (screenVideoTrack) {
+            const replaced = await replaceVideoTrack(screenVideoTrack)
+            if (!replaced) {
+              // Fallback: add screen track
+              peerConnection.current.addTrack(screenVideoTrack, screenStreamRef.current)
+            }
+          }
         }
-        const offer = await peerConnection.current.createOffer()
-        await peerConnection.current.setLocalDescription(offer)
-        socket.emit("offer", { offer, target: remoteSocketId }, roomId)
+
+        // Create and send offer
+        await createAndSendOffer()
       }
     })
 
     socket.on("offer", async ({ offer, from }) => {
-      remoteSocketId = from
+      console.log("Received offer from:", from)
+      remoteSocketId.current = from
+      
       if (!peerConnection.current && streamRef.current) {
-        peerConnection.current = createPeerConnection(socket, remoteSocketId)
-        streamRef.current.getTracks().forEach((track) => peerConnection.current.addTrack(track, streamRef.current))
-        // Add screen tracks if sharing
-        if (screenStreamRef.current) {
-          screenStreamRef.current
-            .getTracks()
-            .forEach((track) => peerConnection.current.addTrack(track, screenStreamRef.current))
-        }
+        peerConnection.current = createPeerConnection(socket, from)
+        
+        // Add all tracks from current stream
+        streamRef.current.getTracks().forEach((track) => {
+          peerConnection.current.addTrack(track, streamRef.current)
+        })
+      }
+
+      if (peerConnection.current) {
         await peerConnection.current.setRemoteDescription(new RTCSessionDescription(offer))
         const answer = await peerConnection.current.createAnswer()
         await peerConnection.current.setLocalDescription(answer)
@@ -172,17 +398,21 @@ const MeetingRoom = () => {
       if (peerConnection.current && candidate) {
         try {
           await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate))
-        } catch {
-          // ignore errors on ICE candidate adding
+        } catch (error) {
+          console.warn('Failed to add ICE candidate:', error)
         }
       }
     })
 
     socket.on("user-left", () => {
+      console.log('User left')
       setIsConnected(false)
       setRemoteScreenSharing(false)
+      remoteSocketId.current = null
+      
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
       if (remoteScreenRef.current) remoteScreenRef.current.srcObject = null
+      
       peerConnection.current?.close()
       peerConnection.current = null
     })
@@ -197,36 +427,57 @@ const MeetingRoom = () => {
       peerConnection.current?.close()
       peerConnection.current = null
     }
-  }, [isStarted, isLoaded, roomId])
+  }, [isStarted, isLoaded, roomId, createAndSendOffer])
 
   // PeerConnection creation helper
-  const createPeerConnection = (socket, targetSocketId) => {
+  const createPeerConnection = useCallback((socket, targetSocketId) => {
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" }
+      ],
     })
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socket.emit("ice-candidate", { candidate: event.candidate, target: targetSocketId }, roomId)
+        socket.emit("ice-candidate", { 
+          candidate: event.candidate, 
+          target: targetSocketId 
+        }, roomId)
       }
     }
 
     pc.ontrack = (event) => {
       const [stream] = event.streams
+      console.log("Received track:", event.track.kind, event.track.label, stream?.id)
+      
       if (stream) {
-        const videoTrack = stream.getVideoTracks()[0]
+        // Improved stream detection logic
+        const isScreenStream = 
+          stream.id.includes("screen") ||
+          event.track.label.includes("screen") ||
+          event.track.getSettings().displaySurface ||
+          event.track.label.includes("monitor") ||
+          event.track.label.includes("window") ||
+          event.track.label.includes("tab")
 
-        // Check if it's screen share by track settings
-        if (videoTrack && videoTrack.getSettings().displaySurface) {
-          // Screen share stream
+        if (isScreenStream) {
+          console.log("Detected screen share stream")
           if (remoteScreenRef.current) {
             remoteScreenRef.current.srcObject = stream
             remoteScreenRef.current.play().catch(console.error)
           }
+          setRemoteScreenSharing(true)
         } else {
-          // Regular video stream
+          console.log("Detected camera stream")
           if (remoteVideoRef.current) {
             remoteVideoRef.current.srcObject = stream
+            remoteVideoRef.current.play().catch(console.error)
+          }
+          // Only set remoteScreenSharing to false if we're sure this is a camera stream
+          // and we were previously showing screen share
+          if (remoteScreenSharing) {
+            setRemoteScreenSharing(false)
           }
         }
         setIsConnected(true)
@@ -235,107 +486,65 @@ const MeetingRoom = () => {
 
     pc.oniceconnectionstatechange = () => {
       const state = pc.iceConnectionState
-      if (state === "connected" || state === "completed") setIsConnected(true)
-      if (state === "disconnected" || state === "failed") setIsConnected(false)
+      console.log("ICE connection state:", state)
+      
+      if (state === "connected" || state === "completed") {
+        setIsConnected(true)
+        showNotification('Connected to participant', 'success')
+      }
+      if (state === "disconnected" || state === "failed") {
+        setIsConnected(false)
+        showNotification('Connection lost', 'warning')
+      }
     }
 
     return pc
-  }
+  }, [roomId, remoteScreenSharing, showNotification])
 
   // Start meeting: get media and show local video
   const startMeeting = async () => {
     setIsLoading(true)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
-        audio: true,
+        video: { 
+          width: { ideal: 1280 }, 
+          height: { ideal: 720 },
+          facingMode: 'user'
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
       })
+      
       streamRef.current = stream
       setIsStarted(true)
+      showNotification('Meeting started successfully', 'success')
     } catch (error) {
-      setError(`Media access failed: ${error.message}`)
+      console.error('Media access failed:', error)
+      let errorMessage = `Media access failed: ${error.message}`
+      
+      if (error.name === 'NotAllowedError') {
+        errorMessage = 'Camera and microphone access denied. Please allow permissions and try again.'
+      } else if (error.name === 'NotFoundError') {
+        errorMessage = 'No camera or microphone found. Please check your devices.'
+      }
+      
+      setError(errorMessage)
+      showNotification(errorMessage, 'error')
     } finally {
       setIsLoading(false)
     }
   }
 
-  // Screen sharing functions
-  const startScreenShare = async () => {
-    try {
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          frameRate: { ideal: 30 },
-        },
-        audio: true,
-      })
-
-      screenStreamRef.current = screenStream
-      setIsScreenSharing(true)
-
-      // Show local screen share immediately
-      if (localScreenRef.current) {
-        localScreenRef.current.srcObject = screenStream
-        // Force play the video
-        localScreenRef.current.play().catch(console.error)
-      }
-
-      // Add screen tracks to peer connection
-      if (peerConnection.current) {
-        screenStream.getTracks().forEach((track) => {
-          peerConnection.current.addTrack(track, screenStream)
-        })
-      }
-
-      // Notify remote user
-      socketRef.current.emit("screen-share-started", roomId)
-
-      // Handle screen share end
-      screenStream.getVideoTracks()[0].onended = () => {
-        stopScreenShare()
-      }
-    } catch (error) {
-      console.error("Screen share failed:", error)
-      setError("Failed to start screen sharing")
-    }
-  }
-
-  const stopScreenShare = async () => {
-    if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((track) => track.stop())
-      screenStreamRef.current = null
-    }
-
-    setIsScreenSharing(false)
-
-    if (localScreenRef.current) {
-      localScreenRef.current.srcObject = null
-    }
-
-    // Remove screen tracks from peer connection
-    if (peerConnection.current) {
-      const senders = peerConnection.current.getSenders()
-      senders.forEach((sender) => {
-        if (sender.track && sender.track.kind === "video" && sender.track.getSettings().displaySurface) {
-          peerConnection.current.removeTrack(sender)
-        }
-      })
-    }
-
-    socketRef.current.emit("screen-share-stopped", roomId)
-  }
-
-  // Effect to handle local screen stream assignment
-  useEffect(() => {
-    if (isScreenSharing && localScreenRef.current && screenStreamRef.current) {
-      localScreenRef.current.srcObject = screenStreamRef.current
-      localScreenRef.current.play().catch(console.error)
-    }
-  }, [isScreenSharing])
-
   // Leave meeting function
-  const leaveMeeting = () => {
+  const leaveMeeting = useCallback(() => {
+    // Stop screen sharing if active
+    if (isScreenSharing) {
+      stopScreenShare()
+    }
+
     // Stop all tracks
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop())
@@ -343,17 +552,20 @@ const MeetingRoom = () => {
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((track) => track.stop())
     }
+
     // Close peer connection
     if (peerConnection.current) {
       peerConnection.current.close()
     }
+
     // Disconnect socket
     if (socketRef.current) {
       socketRef.current.disconnect()
     }
-    // Navigate back to home or create meeting page
+
+    // Navigate back to home
     navigate("/")
-  }
+  }, [isScreenSharing, stopScreenShare, navigate])
 
   const handleLeaveMeeting = () => {
     setShowLeaveDialog(true)
@@ -373,29 +585,37 @@ const MeetingRoom = () => {
   }, [isStarted])
 
   // Toggle audio track enabled state
-  const toggleAudio = () => {
+  const toggleAudio = useCallback(() => {
     if (streamRef.current) {
       const audioTrack = streamRef.current.getAudioTracks()[0]
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled
         setIsAudioMuted(!audioTrack.enabled)
+        showNotification(
+          audioTrack.enabled ? 'Microphone unmuted' : 'Microphone muted', 
+          'info'
+        )
       }
     }
-  }
+  }, [showNotification])
 
   // Toggle video track enabled state
-  const toggleVideo = () => {
+  const toggleVideo = useCallback(() => {
     if (streamRef.current) {
       const videoTrack = streamRef.current.getVideoTracks()[0]
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled
         setIsVideoMuted(!videoTrack.enabled)
+        showNotification(
+          videoTrack.enabled ? 'Camera turned on' : 'Camera turned off', 
+          'info'
+        )
       }
     }
-  }
+  }, [showNotification])
 
   // Send chat message
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     if (message.trim()) {
       socketRef.current.emit("chat-message", {
         roomId,
@@ -404,7 +624,7 @@ const MeetingRoom = () => {
       })
       setMessage("")
     }
-  }
+  }, [message, roomId, user])
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -413,7 +633,7 @@ const MeetingRoom = () => {
     }
   }
 
-  // Chat Component for reuse
+  // Enhanced Chat Component
   const ChatComponent = ({ isDrawer = false }) => (
     <Box
       sx={{
@@ -434,7 +654,12 @@ const MeetingRoom = () => {
           bgcolor: "white",
         }}
       >
-        <Typography variant="h6" fontWeight="600" color="#1a1a1a" sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }}>
+        <Typography 
+          variant="h6" 
+          fontWeight="600" 
+          color="#1a1a1a" 
+          sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }}
+        >
           Chat
         </Typography>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -455,6 +680,7 @@ const MeetingRoom = () => {
           )}
         </Box>
       </Box>
+
       {/* Chat Messages */}
       <Box
         sx={{
@@ -541,6 +767,7 @@ const MeetingRoom = () => {
           </Box>
         )}
       </Box>
+
       {/* Chat Input */}
       <Box
         sx={{
@@ -638,28 +865,11 @@ const MeetingRoom = () => {
                     border: "2px solid #e5e7eb",
                     boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
                   },
-                  userButtonPopoverCard: {
-                    borderRadius: "12px",
-                    boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
-                    border: "1px solid #e5e7eb",
-                  },
-                  userButtonPopoverActionButton: {
-                    borderRadius: "8px",
-                    "&:hover": {
-                      backgroundColor: "#f3f4f6",
-                    },
-                  },
-                  userButtonPopoverActionButtonText: {
-                    color: "#374151",
-                    fontWeight: "500",
-                  },
-                  userButtonPopoverActionButtonIcon: {
-                    color: "#6b7280",
-                  },
                 },
               }}
             />
           </Box>
+
           <Zoom in timeout={600}>
             <Box
               sx={{
@@ -689,6 +899,7 @@ const MeetingRoom = () => {
               >
                 <VideoCall sx={{ fontSize: { xs: 40, sm: 50, md: 60 }, color: "#1976d2" }} />
               </Box>
+
               <Box>
                 <Typography
                   variant="h4"
@@ -713,6 +924,7 @@ const MeetingRoom = () => {
                   Room: {roomId}
                 </Typography>
               </Box>
+
               {error && (
                 <Paper
                   sx={{
@@ -729,6 +941,7 @@ const MeetingRoom = () => {
                   </Typography>
                 </Paper>
               )}
+
               <Button
                 onClick={startMeeting}
                 disabled={isLoading}
@@ -758,6 +971,7 @@ const MeetingRoom = () => {
               >
                 {isLoading ? "Starting..." : "Start Meeting"}
               </Button>
+
               <Paper
                 sx={{
                   p: { xs: 2.5, sm: 3 },
@@ -954,104 +1168,223 @@ const MeetingRoom = () => {
                 </Paper>
               )}
 
-              {/* SEPARATE SCREEN SHARING SECTION */}
+              {/* SCREEN SHARING SECTION */}
               {(isScreenSharing || remoteScreenSharing) && (
-                <Paper
-                  sx={{
-                    bgcolor: "white",
-                    borderRadius: { xs: 1, md: 2 },
-                    border: "1px solid #e5e7eb",
-                    overflow: "hidden",
-                    position: "relative",
-                    height: { xs: "300px", sm: "350px", md: "400px" },
-                    mb: { xs: 1, md: 2 },
-                  }}
-                >
-                  <Box
+                <Box sx={{ mb: { xs: 1, md: 2 } }}>
+                  {/* Main Screen Share Display */}
+                  <Paper
                     sx={{
-                      position: "absolute",
-                      top: { xs: 8, md: 16 },
-                      left: { xs: 8, md: 16 },
-                      zIndex: 2,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 1,
+                      bgcolor: "white",
+                      borderRadius: { xs: 1, md: 2 },
+                      border: "1px solid #e5e7eb",
+                      overflow: "hidden",
+                      position: "relative",
+                      height: { xs: "250px", sm: "300px", md: "350px" },
+                      mb: 2,
                     }}
                   >
-                    <PresentToAll sx={{ fontSize: 16, color: "white" }} />
-                    <Chip
-                      label={isScreenSharing ? "Your Screen" : "Screen Share"}
-                      size="small"
-                      sx={{
-                        bgcolor: "rgba(0,0,0,0.8)",
-                        color: "white",
-                        fontSize: { xs: "0.7rem", md: "0.75rem" },
-                        height: { xs: 20, md: 24 },
-                        backdropFilter: "blur(10px)",
-                      }}
-                    />
-                  </Box>
-
-                  <video
-                    ref={isScreenSharing ? localScreenRef : remoteScreenRef}
-                    autoPlay
-                    playsInline
-                    muted={isScreenSharing} // Only mute local screen share
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                      background: "#000",
-                    }}
-                  />
-
-                  {/* Screen Share Controls */}
-                  {isScreenSharing && (
                     <Box
                       sx={{
                         position: "absolute",
-                        bottom: { xs: 8, md: 16 },
-                        right: { xs: 8, md: 16 },
-                        zIndex: 2,
-                      }}
-                    >
-                      <IconButton
-                        onClick={stopScreenShare}
-                        sx={{
-                          bgcolor: "#dc2626",
-                          color: "white",
-                          "&:hover": {
-                            bgcolor: "#b91c1c",
-                          },
-                        }}
-                      >
-                        <StopScreenShare sx={{ fontSize: { xs: 16, md: 20 } }} />
-                      </IconButton>
-                    </Box>
-                  )}
-
-                  {/* Debug info */}
-                  {isScreenSharing && (
-                    <Box
-                      sx={{
-                        position: "absolute",
-                        bottom: { xs: 8, md: 16 },
+                        top: { xs: 8, md: 16 },
                         left: { xs: 8, md: 16 },
                         zIndex: 2,
-                        bgcolor: "rgba(0,0,0,0.7)",
-                        color: "white",
-                        p: 1,
-                        borderRadius: 1,
-                        fontSize: "0.75rem",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
                       }}
                     >
-                      Screen sharing active
+                      <PresentToAll sx={{ fontSize: 16, color: "white" }} />
+                      <Chip
+                        label={isScreenSharing ? "Your Screen" : `${isConnected ? "Participant's" : "Remote"} Screen`}
+                        size="small"
+                        sx={{
+                          bgcolor: "rgba(0,0,0,0.8)",
+                          color: "white",
+                          fontSize: { xs: "0.7rem", md: "0.75rem" },
+                          height: { xs: 20, md: 24 },
+                          backdropFilter: "blur(10px)",
+                        }}
+                      />
+                      {screenShareStatus && (
+                        <Chip
+                          label={screenShareStatus}
+                          size="small"
+                          icon={screenShareStatus === 'error' ? <Warning /> : <CircularProgress size={12} />}
+                          sx={{
+                            bgcolor: screenShareStatus === 'error' ? "rgba(220,38,38,0.9)" : "rgba(59,130,246,0.9)",
+                            color: "white",
+                            fontSize: "0.7rem",
+                            height: 20,
+                          }}
+                        />
+                      )}
                     </Box>
-                  )}
-                </Paper>
+
+                    <video
+                      ref={isScreenSharing ? localScreenRef : remoteScreenRef}
+                      autoPlay
+                      playsInline
+                      muted={isScreenSharing}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                        background: "#000",
+                      }}
+                    />
+
+                    {/* Screen Share Controls */}
+                    {isScreenSharing && (
+                      <Box
+                        sx={{
+                          position: "absolute",
+                          bottom: { xs: 8, md: 16 },
+                          right: { xs: 8, md: 16 },
+                          zIndex: 2,
+                        }}
+                      >
+                        <IconButton
+                          onClick={stopScreenShare}
+                          disabled={screenShareStatus === 'stopping'}
+                          sx={{
+                            bgcolor: "#dc2626",
+                            color: "white",
+                            "&:hover": {
+                              bgcolor: "#b91c1c",
+                            },
+                            "&:disabled": {
+                              bgcolor: "#9ca3af",
+                            },
+                          }}
+                        >
+                          {screenShareStatus === 'stopping' ? (
+                            <CircularProgress size={16} color="inherit" />
+                          ) : (
+                            <StopScreenShare sx={{ fontSize: { xs: 16, md: 20 } }} />
+                          )}
+                        </IconButton>
+                      </Box>
+                    )}
+                  </Paper>
+
+                  {/* Participants Row During Screen Share */}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      gap: 2,
+                      height: { xs: "120px", sm: "140px", md: "160px" },
+                    }}
+                  >
+                    {/* Your Video - Smaller during screen share */}
+                    <Paper
+                      sx={{
+                        flex: 1,
+                        bgcolor: "white",
+                        borderRadius: { xs: 1, md: 2 },
+                        border: "1px solid #e5e7eb",
+                        overflow: "hidden",
+                        position: "relative",
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          position: "absolute",
+                          top: 8,
+                          left: 8,
+                          zIndex: 2,
+                        }}
+                      >
+                        <Chip
+                          label="You"
+                          size="small"
+                          sx={{
+                            bgcolor: "rgba(0,0,0,0.7)",
+                            color: "white",
+                            fontSize: "0.7rem",
+                            height: 20,
+                          }}
+                        />
+                      </Box>
+                      <video
+                        ref={userVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          background: "#000",
+                          transform: "scaleX(-1)",
+                        }}
+                      />
+                    </Paper>
+
+                    {/* Participant Video - Smaller during screen share */}
+                    <Paper
+                      sx={{
+                        flex: 1,
+                        bgcolor: "white",
+                        borderRadius: { xs: 1, md: 2 },
+                        border: "1px solid #e5e7eb",
+                        overflow: "hidden",
+                        position: "relative",
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          position: "absolute",
+                          top: 8,
+                          left: 8,
+                          zIndex: 2,
+                        }}
+                      >
+                        <Chip
+                          label={isConnected ? "Participant" : "Waiting..."}
+                          size="small"
+                          sx={{
+                            bgcolor: "rgba(0,0,0,0.7)",
+                            color: "white",
+                            fontSize: "0.7rem",
+                            height: 20,
+                          }}
+                        />
+                      </Box>
+                      <video
+                        ref={remoteVideoRef}
+                        autoPlay
+                        playsInline
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          background: "#000",
+                        }}
+                      />
+                      {!isConnected && (
+                        <Box
+                          sx={{
+                            position: "absolute",
+                            top: "50%",
+                            left: "50%",
+                            transform: "translate(-50%, -50%)",
+                            textAlign: "center",
+                            color: "white",
+                          }}
+                        >
+                          <CircularProgress sx={{ color: "white", mb: 1 }} size={24} />
+                          <Typography variant="caption" sx={{ fontSize: "0.7rem" }}>
+                            Waiting...
+                          </Typography>
+                        </Box>
+                      )}
+                    </Paper>
+                  </Box>
+                </Box>
               )}
 
-              {/* ORIGINAL PARTICIPANT VIDEO SECTION - UNTOUCHED */}
+              {/* MAIN PARTICIPANT VIDEO SECTION */}
               <Box
                 sx={{
                   display: "flex",
@@ -1061,7 +1394,7 @@ const MeetingRoom = () => {
                   p: { xs: 1, lg: 0 },
                 }}
               >
-                {/* Local Video - EXACTLY AS BEFORE */}
+                {/* Local Video */}
                 <Paper
                   sx={{
                     flex: 1,
@@ -1152,9 +1485,10 @@ const MeetingRoom = () => {
                         <Videocam sx={{ fontSize: { xs: 16, md: 20 } }} />
                       )}
                     </IconButton>
-                    {/* Screen Share Button */}
+                    {/* Enhanced Screen Share Button */}
                     <IconButton
                       onClick={isScreenSharing ? stopScreenShare : startScreenShare}
+                      disabled={screenShareStatus === 'starting' || screenShareStatus === 'stopping'}
                       sx={{
                         width: { xs: 36, md: 44 },
                         height: { xs: 36, md: 44 },
@@ -1163,9 +1497,15 @@ const MeetingRoom = () => {
                         "&:hover": {
                           bgcolor: isScreenSharing ? "#b91c1c" : "white",
                         },
+                        "&:disabled": {
+                          bgcolor: "#9ca3af",
+                          color: "white",
+                        },
                       }}
                     >
-                      {isScreenSharing ? (
+                      {screenShareStatus === 'starting' || screenShareStatus === 'stopping' ? (
+                        <CircularProgress size={16} color="inherit" />
+                      ) : isScreenSharing ? (
                         <StopScreenShare sx={{ fontSize: { xs: 16, md: 20 } }} />
                       ) : (
                         <ScreenShare sx={{ fontSize: { xs: 16, md: 20 } }} />
@@ -1174,7 +1514,7 @@ const MeetingRoom = () => {
                   </Box>
                 </Paper>
 
-                {/* Remote Video - EXACTLY AS BEFORE */}
+                {/* Remote Video */}
                 <Paper
                   sx={{
                     flex: 1,
@@ -1267,7 +1607,7 @@ const MeetingRoom = () => {
               )}
             </Box>
 
-            {/* Desktop Chat Section - UNTOUCHED */}
+            {/* Desktop Chat Section */}
             {!isMobile && (
               <Paper
                 sx={{
@@ -1304,13 +1644,17 @@ const MeetingRoom = () => {
             </Fab>
           )}
 
-          {/* Mobile Chat Modal - UNTOUCHED */}
+          {/* Mobile Chat Modal */}
           <Dialog
             open={isChatOpen}
             onClose={() => setIsChatOpen(false)}
             fullScreen={isMobile}
             maxWidth="sm"
             fullWidth
+            TransitionComponent={Slide}
+            TransitionProps={{
+              direction: "up",
+            }}
             PaperProps={{
               sx: {
                 ...(isMobile
@@ -1326,9 +1670,6 @@ const MeetingRoom = () => {
                       maxHeight: "80vh",
                     }),
               },
-            }}
-            TransitionProps={{
-              keepMounted: true,
             }}
             disableScrollLock
             disableRestoreFocus
@@ -1399,6 +1740,26 @@ const MeetingRoom = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Enhanced Notification Snackbar */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={4000}
+        onClose={() => setNotification({ ...notification, open: false })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setNotification({ ...notification, open: false })}
+          severity={notification.severity}
+          variant="filled"
+          sx={{
+            borderRadius: 2,
+            fontWeight: 500,
+          }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }
