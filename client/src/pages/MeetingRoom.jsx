@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import { useEffect, useRef, useState } from "react"
-import { useParams, useNavigate } from "react-router-dom"
-import { io } from "socket.io-client"
-import { useUser } from "@clerk/clerk-react"
-import { UserButton } from "@clerk/clerk-react"
+import { useEffect, useRef, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { io } from "socket.io-client";
+import { useUser } from "@clerk/clerk-react";
+import { UserButton } from "@clerk/clerk-react";
 import {
   Box,
   TextField,
@@ -25,7 +25,8 @@ import {
   AppBar,
   Toolbar,
   Fab,
-} from "@mui/material"
+  Alert,
+} from "@mui/material";
 import {
   Mic,
   MicOff,
@@ -42,384 +43,518 @@ import {
   ChatBubble,
   ScreenShare,
   StopScreenShare,
-} from "@mui/icons-material"
+  Warning,
+} from "@mui/icons-material";
 
-const backendUrl = "https://live-meet-site.onrender.com"
+const backendUrl = "https://live-meet-site.onrender.com";
 
 const MeetingRoom = () => {
-  const { roomId } = useParams()
-  const { user, isLoaded } = useUser()
-  const navigate = useNavigate()
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"))
-  const isTablet = useMediaQuery(theme.breakpoints.between("md", "lg"))
-  const isSmallMobile = useMediaQuery(theme.breakpoints.down("sm"))
+  const { roomId } = useParams();
+  const { user, isLoaded } = useUser();
+  const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const isTablet = useMediaQuery(theme.breakpoints.between("md", "lg"));
+  const isSmallMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
-  const userVideoRef = useRef(null)
-  const userWebcamRef = useRef(null)
-  const remoteVideoRef = useRef(null)
-  const peerConnection = useRef(null)
-  const streamRef = useRef(null)
-  const socketRef = useRef(null)
-  const chatEndRef = useRef(null)
-  
+  const userVideoRef = useRef(null);
+  const userWebcamRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const peerConnection = useRef(null);
+  const streamRef = useRef(null);
+  const socketRef = useRef(null);
+  const chatEndRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
+
   // Screen sharing refs
-  const originalVideoTrackRef = useRef(null)
-  const originalStreamRef = useRef(null)
-  const screenStreamRef = useRef(null)
+  const originalVideoTrackRef = useRef(null);
+  const originalStreamRef = useRef(null);
+  const screenStreamRef = useRef(null);
 
-  const [isStarted, setIsStarted] = useState(false)
-  const [isConnected, setIsConnected] = useState(false)
-  const [error, setError] = useState(null)
-  const [message, setMessage] = useState("")
-  const [chat, setChat] = useState([])
-  const [isAudioMuted, setIsAudioMuted] = useState(false)
-  const [isVideoMuted, setIsVideoMuted] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [showLeaveDialog, setShowLeaveDialog] = useState(false)
-  const [isChatOpen, setIsChatOpen] = useState(false)
-  
+  const [isStarted, setIsStarted] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState(null);
+  const [message, setMessage] = useState("");
+  const [chat, setChat] = useState([]);
+  const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const [isVideoMuted, setIsVideoMuted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
   // Screen sharing state
-  const [isScreenSharing, setIsScreenSharing] = useState(false)
-  const [remoteScreenSharing, setRemoteScreenSharing] = useState(false)
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [remoteScreenSharing, setRemoteScreenSharing] = useState(false);
+
+  // Connection state
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   // Auto scroll chat to bottom
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [chat])
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat]);
+
+  // Initialize socket with retry logic
+  const initializeSocket = () => {
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }
+
+    console.log("Attempting to connect to:", backendUrl);
+
+    socketRef.current = io(backendUrl, {
+      transports: ["websocket", "polling"],
+      timeout: 20000,
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5,
+      maxReconnectionAttempts: 5,
+    });
+
+    // Connection event handlers
+    socketRef.current.on("connect", () => {
+      console.log("✅ Socket connected:", socketRef.current.id);
+      setSocketConnected(true);
+      setConnectionError(null);
+      setIsReconnecting(false);
+      setError(null);
+    });
+
+    socketRef.current.on("disconnect", (reason) => {
+      console.log("❌ Socket disconnected:", reason);
+      setSocketConnected(false);
+      setIsConnected(false);
+      if (reason === "io server disconnect") {
+        // Server disconnected, try to reconnect
+        setIsReconnecting(true);
+      }
+    });
+
+    socketRef.current.on("connect_error", (error) => {
+      console.error("❌ Socket connection error:", error);
+      setSocketConnected(false);
+      setConnectionError(`Connection failed: ${error.message}`);
+      setIsReconnecting(true);
+
+      // Retry connection after delay
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      reconnectTimeoutRef.current = setTimeout(() => {
+        console.log("🔄 Retrying connection...");
+        initializeSocket();
+      }, 3000);
+    });
+
+    socketRef.current.on("reconnect", (attemptNumber) => {
+      console.log("🔄 Socket reconnected after", attemptNumber, "attempts");
+      setIsReconnecting(false);
+      setConnectionError(null);
+    });
+
+    socketRef.current.on("reconnect_error", (error) => {
+      console.error("❌ Socket reconnection error:", error);
+      setConnectionError(`Reconnection failed: ${error.message}`);
+    });
+
+    socketRef.current.on("reconnect_failed", () => {
+      console.error("❌ Socket reconnection failed completely");
+      setConnectionError(
+        "Unable to connect to server. Please check your internet connection."
+      );
+      setIsReconnecting(false);
+    });
+
+    // Chat messages
+    socketRef.current.on("chat-message", (data) => {
+      setChat((prev) => [
+        ...prev,
+        {
+          username: data.username,
+          message: data.message,
+          timestamp: new Date(),
+        },
+      ]);
+    });
+
+    // Screen sharing events
+ // On screen-share start/stop received
+socketRef.current.on("screen-share-started", ({ sharer }) => {
+  setRemoteScreenSharing(true);
+  // Add: (re)assign the remote video on the client side
+  if (remoteVideoRef.current && peerConnection.current) {
+    const remoteStream = new MediaStream(
+      peerConnection.current.getReceivers()
+        .map(r => r.track)
+        .filter(Boolean)
+    );
+    remoteVideoRef.current.srcObject = remoteStream;
+  }
+});
+
+
+    socketRef.current.on("screen-share-stopped", ({ sharer }) => {
+      console.log(`Screen share stopped by ${sharer}`);
+      if (sharer !== socketRef.current.id) {
+        setRemoteScreenSharing(false);
+      }
+    });
+  };
 
   // Initialize socket when clerk is loaded
   useEffect(() => {
-    if (!isLoaded) return
+    if (!isLoaded) return;
 
-    socketRef.current = io(backendUrl, { transports: ["websocket"] })
-
-    // Listen for chat messages
-    socketRef.current.on("chat-message", (data) => {
-      setChat((prev) => [...prev, { username: data.username, message: data.message, timestamp: new Date() }])
-    })
-
-    // Listen for screen sharing events
-    socketRef.current.on("screen-share-started", ({ sharer }) => {
-      console.log(`Screen share started by ${sharer}`)
-      if (sharer !== socketRef.current.id) {
-        setRemoteScreenSharing(true)
-      }
-    })
-
-    socketRef.current.on("screen-share-stopped", ({ sharer }) => {
-      console.log(`Screen share stopped by ${sharer}`)
-      if (sharer !== socketRef.current.id) {
-        setRemoteScreenSharing(false)
-      }
-    })
+    initializeSocket();
 
     // Cleanup on unmount
     return () => {
-      peerConnection.current?.close()
-      streamRef.current?.getTracks?.().forEach((track) => track.stop())
-      originalStreamRef.current?.getTracks?.().forEach((track) => track.stop())
-      screenStreamRef.current?.getTracks?.().forEach((track) => track.stop())
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      peerConnection.current?.close();
+      streamRef.current?.getTracks?.().forEach((track) => track.stop());
+      originalStreamRef.current?.getTracks?.().forEach((track) => track.stop());
+      screenStreamRef.current?.getTracks?.().forEach((track) => track.stop());
       socketRef.current?.disconnect()
-    }
-  }, [isLoaded, roomId])
+    };
+  }, [isLoaded, roomId]);
 
-  // Setup signaling listeners only when meeting started
+  // Setup signaling listeners only when meeting started and socket connected
   useEffect(() => {
-    if (!isStarted || !isLoaded || !socketRef.current) return
+    if (!isStarted || !isLoaded || !socketRef.current || !socketConnected)
+      return;
 
-    const socket = socketRef.current
-    let remoteSocketId = null
+    const socket = socketRef.current;
+    let remoteSocketId = null;
 
     // Join signaling rooms
-    socket.emit("join-meeting", roomId)
-    socket.emit("join", roomId)
+    socket.emit("join-meeting", roomId);
+    socket.emit("join", roomId);
 
     socket.on("user-joined", async ({ socketId }) => {
-      remoteSocketId = socketId
+      remoteSocketId = socketId;
       if (!peerConnection.current && streamRef.current) {
-        peerConnection.current = createPeerConnection(socket, remoteSocketId)
-        streamRef.current.getTracks().forEach((track) => peerConnection.current.addTrack(track, streamRef.current))
-        const offer = await peerConnection.current.createOffer()
-        await peerConnection.current.setLocalDescription(offer)
-        socket.emit("offer", { offer, target: remoteSocketId }, roomId)
+        peerConnection.current = createPeerConnection(socket, remoteSocketId);
+        streamRef.current
+          .getTracks()
+          .forEach((track) =>
+            peerConnection.current.addTrack(track, streamRef.current)
+          );
+        const offer = await peerConnection.current.createOffer();
+        await peerConnection.current.setLocalDescription(offer);
+        socket.emit("offer", { offer, target: remoteSocketId }, roomId);
       }
-    })
+    });
 
     socket.on("offer", async ({ offer, from }) => {
-      remoteSocketId = from
+      remoteSocketId = from;
       if (!peerConnection.current && streamRef.current) {
-        peerConnection.current = createPeerConnection(socket, remoteSocketId)
-        streamRef.current.getTracks().forEach((track) => peerConnection.current.addTrack(track, streamRef.current))
-        await peerConnection.current.setRemoteDescription(new RTCSessionDescription(offer))
-        const answer = await peerConnection.current.createAnswer()
-        await peerConnection.current.setLocalDescription(answer)
-        socket.emit("answer", { answer, target: from }, roomId)
+        peerConnection.current = createPeerConnection(socket, remoteSocketId);
+        streamRef.current
+          .getTracks()
+          .forEach((track) =>
+            peerConnection.current.addTrack(track, streamRef.current)
+          );
+        await peerConnection.current.setRemoteDescription(
+          new RTCSessionDescription(offer)
+        );
+        const answer = await peerConnection.current.createAnswer();
+        await peerConnection.current.setLocalDescription(answer);
+        socket.emit("answer", { answer, target: from }, roomId);
       }
-    })
+    });
 
     socket.on("answer", async ({ answer }) => {
       if (peerConnection.current) {
-        await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer))
+        await peerConnection.current.setRemoteDescription(
+          new RTCSessionDescription(answer)
+        );
       }
-    })
+    });
 
     socket.on("ice-candidate", async ({ candidate }) => {
       if (peerConnection.current && candidate) {
         try {
-          await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate))
+          await peerConnection.current.addIceCandidate(
+            new RTCIceCandidate(candidate)
+          );
         } catch {
           // ignore errors on ICE candidate adding
         }
       }
-    })
+    });
 
     socket.on("user-left", () => {
-      setIsConnected(false)
-      setRemoteScreenSharing(false)
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
-      peerConnection.current?.close()
-      peerConnection.current = null
-    })
+      setIsConnected(false);
+      setRemoteScreenSharing(false);
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+      peerConnection.current?.close();
+      peerConnection.current = null;
+    });
 
     // Cleanup event listeners on unmount or dependency change
     return () => {
-      socket.off("user-joined")
-      socket.off("offer")
-      socket.off("answer")
-      socket.off("ice-candidate")
-      socket.off("user-left")
-      peerConnection.current?.close()
-      peerConnection.current = null
-    }
-  }, [isStarted, isLoaded, roomId])
+      socket.off("user-joined");
+      socket.off("offer");
+      socket.off("answer");
+      socket.off("ice-candidate");
+      socket.off("user-left");
+      peerConnection.current?.close();
+      peerConnection.current = null;
+    };
+  }, [isStarted, isLoaded, roomId, socketConnected]);
 
   // PeerConnection creation helper
   const createPeerConnection = (socket, targetSocketId) => {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    })
+    });
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socket.emit("ice-candidate", { candidate: event.candidate, target: targetSocketId }, roomId)
+        socket.emit(
+          "ice-candidate",
+          { candidate: event.candidate, target: targetSocketId },
+          roomId
+        );
       }
-    }
+    };
 
     pc.ontrack = (event) => {
       if (remoteVideoRef.current && event.streams[0]) {
-        remoteVideoRef.current.srcObject = event.streams[0]
-        setIsConnected(true)
+        remoteVideoRef.current.srcObject = event.streams[0];
+        setIsConnected(true);
       }
-    }
+    };
 
     pc.oniceconnectionstatechange = () => {
-      const state = pc.iceConnectionState
-      if (state === "connected" || state === "completed") setIsConnected(true)
-      if (state === "disconnected" || state === "failed") setIsConnected(false)
-    }
+      const state = pc.iceConnectionState;
+      if (state === "connected" || state === "completed") setIsConnected(true);
+      if (state === "disconnected" || state === "failed") setIsConnected(false);
+    };
 
-    return pc
-  }
+    return pc;
+  };
 
   // Start meeting: get media and show local video
   const startMeeting = async () => {
-    setIsLoading(true)
+    if (!socketConnected) {
+      setError(
+        "Not connected to server. Please wait for connection or refresh the page."
+      );
+      return;
+    }
+
+    setIsLoading(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
         audio: true,
-      })
-      streamRef.current = stream
-      originalStreamRef.current = stream
-      originalVideoTrackRef.current = stream.getVideoTracks()[0]
-      setIsStarted(true)
+      });
+      streamRef.current = stream;
+      originalStreamRef.current = stream;
+      originalVideoTrackRef.current = stream.getVideoTracks()[0];
+      setIsStarted(true);
     } catch (error) {
-      setError(`Media access failed: ${error.message}`)
+      setError(`Media access failed: ${error.message}`);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   // Screen sharing functions
   const startScreenShare = async () => {
+    if (!socketConnected) {
+      setError("Not connected to server. Cannot start screen sharing.");
+      return;
+    }
+
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
-        audio: true
-      })
-      
-      screenStreamRef.current = screenStream
-      const screenVideoTrack = screenStream.getVideoTracks()[0]
-      
+        audio: true,
+      });
+
+      screenStreamRef.current = screenStream;
+      const screenVideoTrack = screenStream.getVideoTracks()[0];
+
       // Replace video track in peer connection
       if (peerConnection.current) {
-        const sender = peerConnection.current.getSenders().find(s => s.track && s.track.kind === 'video')
+        const sender = peerConnection.current
+          .getSenders()
+          .find((s) => s.track && s.track.kind === "video");
         if (sender) {
-          await sender.replaceTrack(screenVideoTrack)
+          await sender.replaceTrack(screenVideoTrack);
         }
       }
-      
+
       // Update main video display to screen share
       if (userVideoRef.current) {
-        userVideoRef.current.srcObject = screenStream
+        userVideoRef.current.srcObject = screenStream;
       }
-      
+
       // Show webcam in picture-in-picture
       if (userWebcamRef.current && originalStreamRef.current) {
-        userWebcamRef.current.srcObject = originalStreamRef.current
+        userWebcamRef.current.srcObject = originalStreamRef.current;
       }
-      
-      setIsScreenSharing(true)
-      
+
+      setIsScreenSharing(true);
+
       // Notify backend about screen sharing
-      socketRef.current.emit("start-screen-share", { roomId })
-      
+      socketRef.current.emit("start-screen-share", { roomId });
+
       // Listen for screen share end (when user stops sharing via browser)
       screenVideoTrack.onended = () => {
-        stopScreenShare()
-      }
-      
+        stopScreenShare();
+      };
     } catch (error) {
-      console.error('Error starting screen share:', error)
-      setError('Failed to start screen sharing')
+      console.error("Error starting screen share:", error);
+      setError("Failed to start screen sharing");
     }
-  }
+  };
 
   const stopScreenShare = async () => {
     try {
       // Stop screen sharing tracks
       if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach(track => track.stop())
-        screenStreamRef.current = null
+        screenStreamRef.current.getTracks().forEach((track) => track.stop());
+        screenStreamRef.current = null;
       }
-      
+
       // Replace back to original video track
       if (peerConnection.current && originalVideoTrackRef.current) {
-        const sender = peerConnection.current.getSenders().find(s => s.track && s.track.kind === 'video')
+        const sender = peerConnection.current
+          .getSenders()
+          .find((s) => s.track && s.track.kind === "video");
         if (sender) {
-          await sender.replaceTrack(originalVideoTrackRef.current)
+          await sender.replaceTrack(originalVideoTrackRef.current);
         }
       }
-      
+
       // Update main video display back to webcam
       if (userVideoRef.current && originalStreamRef.current) {
-        userVideoRef.current.srcObject = originalStreamRef.current
+        userVideoRef.current.srcObject = originalStreamRef.current;
       }
-      
+
       // Clear webcam PiP
       if (userWebcamRef.current) {
-        userWebcamRef.current.srcObject = null
+        userWebcamRef.current.srcObject = null;
       }
-      
-      setIsScreenSharing(false)
-      
+
+      setIsScreenSharing(false);
+
       // Notify backend about stopping screen share
-      socketRef.current.emit("stop-screen-share", { roomId })
-      
+      if (socketConnected && socketRef.current) {
+        socketRef.current.emit("stop-screen-share", { roomId });
+      }
     } catch (error) {
-      console.error('Error stopping screen share:', error)
-      setError('Failed to stop screen sharing')
+      console.error("Error stopping screen share:", error);
+      setError("Failed to stop screen sharing");
     }
-  }
+  };
 
   const toggleScreenShare = () => {
     if (isScreenSharing) {
-      stopScreenShare()
+      stopScreenShare();
     } else {
-      startScreenShare()
+      startScreenShare();
     }
-  }
+  };
 
   // Leave meeting function
   const leaveMeeting = () => {
     // Notify about leaving room
-    if (socketRef.current) {
-      socketRef.current.emit("leave-room", roomId)
+    if (socketRef.current && socketConnected) {
+      socketRef.current.emit("leave-room", roomId);
     }
 
     // Stop all tracks
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop())
+      streamRef.current.getTracks().forEach((track) => track.stop());
     }
     if (originalStreamRef.current) {
-      originalStreamRef.current.getTracks().forEach((track) => track.stop())
+      originalStreamRef.current.getTracks().forEach((track) => track.stop());
     }
     if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((track) => track.stop())
+      screenStreamRef.current.getTracks().forEach((track) => track.stop());
     }
 
     // Close peer connection
     if (peerConnection.current) {
-      peerConnection.current.close()
+      peerConnection.current.close();
     }
 
     // Disconnect socket
     if (socketRef.current) {
-      socketRef.current.disconnect()
+      socketRef.current.disconnect();
     }
 
     // Navigate back to home or create meeting page
-    navigate("/")
-  }
+    navigate("/");
+  };
 
   const handleLeaveMeeting = () => {
-    setShowLeaveDialog(true)
-  }
+    setShowLeaveDialog(true);
+  };
 
   const confirmLeaveMeeting = () => {
-    setShowLeaveDialog(false)
-    leaveMeeting()
-  }
+    setShowLeaveDialog(false);
+    leaveMeeting();
+  };
 
   // Assign local stream to video element when both started and video ref ready
   useEffect(() => {
     if (isStarted && userVideoRef.current && streamRef.current) {
-      userVideoRef.current.srcObject = streamRef.current
-      userVideoRef.current.play().catch(() => {})
+      userVideoRef.current.srcObject = streamRef.current;
+      userVideoRef.current.play().catch(() => {});
     }
-  }, [isStarted])
+  }, [isStarted]);
 
   // Toggle audio track enabled state
   const toggleAudio = () => {
     if (originalStreamRef.current) {
-      const audioTrack = originalStreamRef.current.getAudioTracks()[0]
+      const audioTrack = originalStreamRef.current.getAudioTracks()[0];
       if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled
-        setIsAudioMuted(!audioTrack.enabled)
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsAudioMuted(!audioTrack.enabled);
       }
     }
-  }
+  };
 
   // Toggle video track enabled state
   const toggleVideo = () => {
     if (originalStreamRef.current) {
-      const videoTrack = originalStreamRef.current.getVideoTracks()[0]
+      const videoTrack = originalStreamRef.current.getVideoTracks()[0];
       if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled
-        setIsVideoMuted(!videoTrack.enabled)
+        videoTrack.enabled = !videoTrack.enabled;
+        setIsVideoMuted(!videoTrack.enabled);
       }
     }
-  }
+  };
 
   // Send chat message
   const handleSend = () => {
-    if (message.trim()) {
+    if (message.trim() && socketConnected) {
       socketRef.current.emit("chat-message", {
         roomId,
         message,
         username: user?.username || user?.firstName || "Anonymous",
-      })
-      setMessage("")
+      });
+      setMessage("");
+    } else if (!socketConnected) {
+      setError("Not connected to server. Cannot send message.");
     }
-  }
+  };
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
+      e.preventDefault();
+      handleSend();
     }
-  }
+  };
 
   // Chat Component for reuse
   const ChatComponent = ({ isDrawer = false }) => (
@@ -442,7 +577,12 @@ const MeetingRoom = () => {
           bgcolor: "white",
         }}
       >
-        <Typography variant="h6" fontWeight="600" color="#1a1a1a" sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }}>
+        <Typography
+          variant="h6"
+          fontWeight="600"
+          color="#1a1a1a"
+          sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }}
+        >
           Chat
         </Typography>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -491,17 +631,31 @@ const MeetingRoom = () => {
             }}
           >
             <Chat sx={{ fontSize: { xs: 36, sm: 48 }, opacity: 0.3, mb: 2 }} />
-            <Typography variant="body2" sx={{ fontSize: { xs: "0.85rem", sm: "0.875rem" } }}>
+            <Typography
+              variant="body2"
+              sx={{ fontSize: { xs: "0.85rem", sm: "0.875rem" } }}
+            >
               No messages yet
             </Typography>
-            <Typography variant="caption" sx={{ fontSize: { xs: "0.75rem", sm: "0.75rem" } }}>
+            <Typography
+              variant="caption"
+              sx={{ fontSize: { xs: "0.75rem", sm: "0.75rem" } }}
+            >
               Start the conversation!
             </Typography>
           </Box>
         ) : (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: { xs: 1.5, sm: 2 } }}>
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              gap: { xs: 1.5, sm: 2 },
+            }}
+          >
             {chat.map((msg, idx) => {
-              const isOwnMessage = msg.username === (user?.username || user?.firstName || "Anonymous")
+              const isOwnMessage =
+                msg.username ===
+                (user?.username || user?.firstName || "Anonymous");
               return (
                 <Box
                   key={idx}
@@ -544,7 +698,7 @@ const MeetingRoom = () => {
                     </Typography>
                   </Box>
                 </Box>
-              )
+              );
             })}
             <div ref={chatEndRef} />
           </Box>
@@ -569,14 +723,15 @@ const MeetingRoom = () => {
           onKeyPress={handleKeyPress}
           onFocus={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
-          placeholder="Type a message..."
+          placeholder={socketConnected ? "Type a message..." : "Connecting..."}
           variant="outlined"
           size="small"
           autoComplete="off"
+          disabled={!socketConnected}
           sx={{
             "& .MuiOutlinedInput-root": {
               borderRadius: 2,
-              bgcolor: "#f9fafb",
+              bgcolor: socketConnected ? "#f9fafb" : "#f3f4f6",
               border: "1px solid #e5e7eb",
               fontSize: { xs: "0.9rem", sm: "1rem" },
               "&:hover": {
@@ -594,17 +749,18 @@ const MeetingRoom = () => {
         />
         <IconButton
           onClick={(e) => {
-            e.stopPropagation()
-            handleSend()
+            e.stopPropagation();
+            handleSend();
           }}
-          disabled={!message.trim()}
+          disabled={!message.trim() || !socketConnected}
           sx={{
             width: { xs: 44, sm: 40 },
             height: { xs: 44, sm: 40 },
-            bgcolor: message.trim() ? "#1976d2" : "#f3f4f6",
-            color: message.trim() ? "white" : "#9ca3af",
+            bgcolor: message.trim() && socketConnected ? "#1976d2" : "#f3f4f6",
+            color: message.trim() && socketConnected ? "white" : "#9ca3af",
             "&:hover": {
-              bgcolor: message.trim() ? "#1565c0" : "#e5e7eb",
+              bgcolor:
+                message.trim() && socketConnected ? "#1565c0" : "#e5e7eb",
             },
             "&:disabled": {
               bgcolor: "#f3f4f6",
@@ -616,7 +772,7 @@ const MeetingRoom = () => {
         </IconButton>
       </Box>
     </Box>
-  )
+  );
 
   return (
     <Box
@@ -627,8 +783,29 @@ const MeetingRoom = () => {
         flexDirection: "column",
       }}
     >
+      {/* Connection Status Alert */}
+      {(connectionError || isReconnecting) && (
+        <Alert
+          severity={isReconnecting ? "warning" : "error"}
+          sx={{
+            borderRadius: 0,
+            "& .MuiAlert-message": {
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+            },
+          }}
+        >
+          {isReconnecting && <CircularProgress size={16} />}
+          {isReconnecting ? "Reconnecting to server..." : connectionError}
+        </Alert>
+      )}
+
       {!isStarted ? (
-        <Container maxWidth="sm" sx={{ flex: 1, display: "flex", alignItems: "center", py: 4 }}>
+        <Container
+          maxWidth="sm"
+          sx={{ flex: 1, display: "flex", alignItems: "center", py: 4 }}
+        >
           {/* User Button for pre-meeting */}
           <Box
             sx={{
@@ -698,7 +875,12 @@ const MeetingRoom = () => {
                   mb: 2,
                 }}
               >
-                <VideoCall sx={{ fontSize: { xs: 40, sm: 50, md: 60 }, color: "#1976d2" }} />
+                <VideoCall
+                  sx={{
+                    fontSize: { xs: 40, sm: 50, md: 60 },
+                    color: "#1976d2",
+                  }}
+                />
               </Box>
 
               <Box>
@@ -726,6 +908,23 @@ const MeetingRoom = () => {
                 </Typography>
               </Box>
 
+              {/* Connection Status */}
+              <Box
+                sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}
+              >
+                <Circle
+                  sx={{
+                    fontSize: 8,
+                    color: socketConnected ? "#10b981" : "#f59e0b",
+                  }}
+                />
+                <Typography variant="body2" color="#6b7280">
+                  {socketConnected
+                    ? "Connected to server"
+                    : "Connecting to server..."}
+                </Typography>
+              </Box>
+
               {error && (
                 <Paper
                   sx={{
@@ -737,7 +936,10 @@ const MeetingRoom = () => {
                     maxWidth: 400,
                   }}
                 >
-                  <Typography color="#dc2626" sx={{ fontSize: { xs: "0.85rem", sm: "0.875rem" } }}>
+                  <Typography
+                    color="#dc2626"
+                    sx={{ fontSize: { xs: "0.85rem", sm: "0.875rem" } }}
+                  >
                     {error}
                   </Typography>
                 </Paper>
@@ -745,8 +947,10 @@ const MeetingRoom = () => {
 
               <Button
                 onClick={startMeeting}
-                disabled={isLoading}
-                startIcon={isLoading ? <CircularProgress size={20} /> : <PlayArrow />}
+                disabled={isLoading || !socketConnected}
+                startIcon={
+                  isLoading ? <CircularProgress size={20} /> : <PlayArrow />
+                }
                 sx={{
                   px: { xs: 4, sm: 6 },
                   py: { xs: 2, sm: 2 },
@@ -770,7 +974,11 @@ const MeetingRoom = () => {
                   },
                 }}
               >
-                {isLoading ? "Starting..." : "Start Meeting"}
+                {isLoading
+                  ? "Starting..."
+                  : socketConnected
+                    ? "Start Meeting"
+                    : "Connecting..."}
               </Button>
 
               <Paper
@@ -825,12 +1033,25 @@ const MeetingRoom = () => {
                 color: "#1a1a1a",
               }}
             >
-              <Toolbar sx={{ justifyContent: "space-between", minHeight: { xs: 56, sm: 64 } }}>
+              <Toolbar
+                sx={{
+                  justifyContent: "space-between",
+                  minHeight: { xs: 56, sm: 64 },
+                }}
+              >
                 <Box>
-                  <Typography variant="h6" fontWeight="600" sx={{ fontSize: { xs: "1rem", sm: "1.25rem" } }}>
+                  <Typography
+                    variant="h6"
+                    fontWeight="600"
+                    sx={{ fontSize: { xs: "1rem", sm: "1.25rem" } }}
+                  >
                     Meeting
                   </Typography>
-                  <Typography variant="caption" color="#6b7280" sx={{ fontSize: { xs: "0.7rem", sm: "0.75rem" } }}>
+                  <Typography
+                    variant="caption"
+                    color="#6b7280"
+                    sx={{ fontSize: { xs: "0.7rem", sm: "0.75rem" } }}
+                  >
                     {roomId?.slice(0, 8)}...
                   </Typography>
                 </Box>
@@ -924,11 +1145,19 @@ const MeetingRoom = () => {
                       <Circle
                         sx={{
                           fontSize: 8,
-                          color: isConnected ? "#10b981" : "#f59e0b",
+                          color: socketConnected
+                            ? isConnected
+                              ? "#10b981"
+                              : "#f59e0b"
+                            : "#dc2626",
                         }}
                       />
                       <Typography variant="body2" color="#6b7280">
-                        {isConnected ? "Connected" : "Waiting for others"}
+                        {!socketConnected
+                          ? "Disconnected"
+                          : isConnected
+                            ? "Connected"
+                            : "Waiting for others"}
                       </Typography>
                     </Box>
                     <Button
@@ -1010,7 +1239,7 @@ const MeetingRoom = () => {
                       }}
                     />
                   </Box>
-                  
+
                   {/* Main video (screen share or webcam) */}
                   <video
                     ref={userVideoRef}
@@ -1026,7 +1255,7 @@ const MeetingRoom = () => {
                       transform: isScreenSharing ? "none" : "scaleX(-1)",
                     }}
                   />
-                  
+
                   {/* Picture-in-Picture webcam when screen sharing */}
                   {isScreenSharing && (
                     <Box
@@ -1078,7 +1307,7 @@ const MeetingRoom = () => {
                       </Box>
                     </Box>
                   )}
-                  
+
                   <Box
                     sx={{
                       position: "absolute",
@@ -1094,7 +1323,9 @@ const MeetingRoom = () => {
                       sx={{
                         width: { xs: 36, md: 44 },
                         height: { xs: 36, md: 44 },
-                        bgcolor: isAudioMuted ? "#dc2626" : "rgba(255,255,255,0.9)",
+                        bgcolor: isAudioMuted
+                          ? "#dc2626"
+                          : "rgba(255,255,255,0.9)",
                         color: isAudioMuted ? "white" : "#374151",
                         "&:hover": {
                           bgcolor: isAudioMuted ? "#b91c1c" : "white",
@@ -1112,7 +1343,9 @@ const MeetingRoom = () => {
                       sx={{
                         width: { xs: 36, md: 44 },
                         height: { xs: 36, md: 44 },
-                        bgcolor: isVideoMuted ? "#dc2626" : "rgba(255,255,255,0.9)",
+                        bgcolor: isVideoMuted
+                          ? "#dc2626"
+                          : "rgba(255,255,255,0.9)",
                         color: isVideoMuted ? "white" : "#374151",
                         "&:hover": {
                           bgcolor: isVideoMuted ? "#b91c1c" : "white",
@@ -1127,18 +1360,27 @@ const MeetingRoom = () => {
                     </IconButton>
                     <IconButton
                       onClick={toggleScreenShare}
+                      disabled={!socketConnected}
                       sx={{
                         width: { xs: 36, md: 44 },
                         height: { xs: 36, md: 44 },
-                        bgcolor: isScreenSharing ? "#1976d2" : "rgba(255,255,255,0.9)",
+                        bgcolor: isScreenSharing
+                          ? "#1976d2"
+                          : "rgba(255,255,255,0.9)",
                         color: isScreenSharing ? "white" : "#374151",
                         "&:hover": {
                           bgcolor: isScreenSharing ? "#1565c0" : "white",
                         },
+                        "&:disabled": {
+                          bgcolor: "#f3f4f6",
+                          color: "#9ca3af",
+                        },
                       }}
                     >
                       {isScreenSharing ? (
-                        <StopScreenShare sx={{ fontSize: { xs: 16, md: 20 } }} />
+                        <StopScreenShare
+                          sx={{ fontSize: { xs: 16, md: 20 } }}
+                        />
                       ) : (
                         <ScreenShare sx={{ fontSize: { xs: 16, md: 20 } }} />
                       )}
@@ -1168,9 +1410,9 @@ const MeetingRoom = () => {
                   >
                     <Chip
                       label={
-                        isConnected 
-                          ? remoteScreenSharing 
-                            ? "Participant (Screen)" 
+                        isConnected
+                          ? remoteScreenSharing
+                            ? "Participant (Screen)"
                             : "Participant"
                           : "Waiting..."
                       }
@@ -1205,8 +1447,14 @@ const MeetingRoom = () => {
                         color: "white",
                       }}
                     >
-                      <CircularProgress sx={{ color: "white", mb: 2 }} size={40} />
-                      <Typography variant="body2" sx={{ fontSize: { xs: "0.8rem", md: "0.875rem" } }}>
+                      <CircularProgress
+                        sx={{ color: "white", mb: 2 }}
+                        size={40}
+                      />
+                      <Typography
+                        variant="body2"
+                        sx={{ fontSize: { xs: "0.8rem", md: "0.875rem" } }}
+                      >
                         Waiting for participant...
                       </Typography>
                     </Box>
@@ -1224,7 +1472,11 @@ const MeetingRoom = () => {
                     borderRadius: 2,
                   }}
                 >
-                  <Typography variant="body2" color="#1e40af" sx={{ mb: 1, fontWeight: 500 }}>
+                  <Typography
+                    variant="body2"
+                    color="#1e40af"
+                    sx={{ mb: 1, fontWeight: 500 }}
+                  >
                     Invite others to join
                   </Typography>
                   <Box
@@ -1332,14 +1584,26 @@ const MeetingRoom = () => {
         }}
       >
         <DialogTitle sx={{ textAlign: "center", pb: 2 }}>
-          <ExitToApp sx={{ fontSize: { xs: 40, sm: 48 }, color: "#dc2626", mb: 2 }} />
-          <Typography variant="h6" fontWeight="600" color="#1a1a1a" sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }}>
+          <ExitToApp
+            sx={{ fontSize: { xs: 40, sm: 48 }, color: "#dc2626", mb: 2 }}
+          />
+          <Typography
+            variant="h6"
+            fontWeight="600"
+            color="#1a1a1a"
+            sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }}
+          >
             Leave Meeting?
           </Typography>
         </DialogTitle>
         <DialogContent sx={{ textAlign: "center", pb: 2 }}>
-          <Typography variant="body1" color="#6b7280" sx={{ fontSize: { xs: "0.9rem", sm: "1rem" } }}>
-            Are you sure you want to leave this meeting? This action cannot be undone.
+          <Typography
+            variant="body1"
+            color="#6b7280"
+            sx={{ fontSize: { xs: "0.9rem", sm: "1rem" } }}
+          >
+            Are you sure you want to leave this meeting? This action cannot be
+            undone.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "center", gap: 2, px: 3, pb: 3 }}>
@@ -1378,7 +1642,7 @@ const MeetingRoom = () => {
         </DialogActions>
       </Dialog>
     </Box>
-  )
-}
+  );
+};
 
-export default MeetingRoom
+export default MeetingRoom;
