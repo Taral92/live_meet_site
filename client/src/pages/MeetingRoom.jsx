@@ -46,7 +46,7 @@ import {
   Warning,
 } from "@mui/icons-material";
 
-const backendUrl = "https://live-meet-site.onrender.com";
+const backendUrl = "";
 
 const MeetingRoom = () => {
   const { roomId } = useParams();
@@ -65,6 +65,8 @@ const MeetingRoom = () => {
   const socketRef = useRef(null);
   const chatEndRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const remoteScreenVideoRef = useRef(null);
+
 
   // Screen sharing refs
   const originalVideoTrackRef = useRef(null);
@@ -184,14 +186,19 @@ const MeetingRoom = () => {
 socketRef.current.on("screen-share-started", ({ sharer }) => {
   setRemoteScreenSharing(true);
   // Add: (re)assign the remote video on the client side
-  if (remoteVideoRef.current && peerConnection.current) {
-    const remoteStream = new MediaStream(
-      peerConnection.current.getReceivers()
-        .map(r => r.track)
-        .filter(Boolean)
-    );
-    remoteVideoRef.current.srcObject = remoteStream;
-  }
+  // Remove only the screen share video track, retain webcam
+if (peerConnection.current) {
+  const senders = peerConnection.current.getSenders();
+  senders
+    .filter(
+      (sender) =>
+        sender.track &&
+        sender.track.kind === "video" &&
+        sender.track.label.toLowerCase().includes("screen")
+    )
+    .forEach((sender) => peerConnection.current.removeTrack(sender));
+}
+
 });
 
 
@@ -324,11 +331,27 @@ socketRef.current.on("screen-share-started", ({ sharer }) => {
     };
 
     pc.ontrack = (event) => {
-      if (remoteVideoRef.current && event.streams[0]) {
-        remoteVideoRef.current.srcObject = event.streams[0];
-        setIsConnected(true);
+      if (event.track.kind === "video") {
+        // If it's a screen track (label detection works in Chrome/Firefox)
+        if (
+          event.track.label.toLowerCase().includes("screen") ||
+          event.track.label.toLowerCase().includes("display")
+        ) {
+          // Assign only this track (screen) to separate video
+          if (remoteScreenVideoRef.current) {
+            remoteScreenVideoRef.current.srcObject = new MediaStream([event.track]);
+          }
+          setRemoteScreenSharing(true);
+        } else {
+          // Webcam video
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = event.streams[0];
+          }
+          setIsConnected(true);
+        }
       }
     };
+    
 
     pc.oniceconnectionstatechange = () => {
       const state = pc.iceConnectionState;
@@ -382,14 +405,11 @@ socketRef.current.on("screen-share-started", ({ sharer }) => {
       const screenVideoTrack = screenStream.getVideoTracks()[0];
 
       // Replace video track in peer connection
+      // ----> ADD the screen video track to peerConnection
       if (peerConnection.current) {
-        const sender = peerConnection.current
-          .getSenders()
-          .find((s) => s.track && s.track.kind === "video");
-        if (sender) {
-          await sender.replaceTrack(screenVideoTrack);
-        }
+        peerConnection.current.addTrack(screenVideoTrack, screenStreamRef.current);
       }
+      
 
       // Update main video display to screen share
       if (userVideoRef.current) {
@@ -419,20 +439,19 @@ socketRef.current.on("screen-share-started", ({ sharer }) => {
   const stopScreenShare = async () => {
     try {
       // Stop screen sharing tracks
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach((track) => track.stop());
-        screenStreamRef.current = null;
-      }
-
-      // Replace back to original video track
-      if (peerConnection.current && originalVideoTrackRef.current) {
-        const sender = peerConnection.current
-          .getSenders()
-          .find((s) => s.track && s.track.kind === "video");
-        if (sender) {
-          await sender.replaceTrack(originalVideoTrackRef.current);
-        }
-      }
+      // ... other code  
+  // Remove only the screen share video track, retain webcam
+  if (peerConnection.current) {
+    const senders = peerConnection.current.getSenders();
+    senders
+      .filter(
+        (sender) =>
+          sender.track &&
+          sender.track.kind === "video" &&
+          sender.track.label.toLowerCase().includes("screen")
+      )
+      .forEach((sender) => peerConnection.current.removeTrack(sender));
+  }
 
       // Update main video display back to webcam
       if (userVideoRef.current && originalStreamRef.current) {
@@ -1425,17 +1444,19 @@ socketRef.current.on("screen-share-started", ({ sharer }) => {
                       }}
                     />
                   </Box>
-                  <video
-                    ref={remoteVideoRef}
-                    autoPlay
-                    playsInline
-                    style={{
+                  {remoteScreenSharing && (
+                    <video
+                      ref={remoteScreenVideoRef}
+                      autoPlay
+                      playsInline
+                      style={{
                       width: "100%",
                       height: "100%",
                       objectFit: "cover",
                       background: "#000",
                     }}
                   />
+                  )}
                   {!isConnected && (
                     <Box
                       sx={{
