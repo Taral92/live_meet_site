@@ -46,7 +46,7 @@ import {
   Warning,
 } from "@mui/icons-material";
 
-const backendUrl = "";
+const backendUrl = "https://live-meet-site.onrender.com";
 
 const MeetingRoom = () => {
   const { roomId } = useParams();
