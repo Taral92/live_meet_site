@@ -40,7 +40,7 @@ import {
   StopScreenShare,
 } from "@mui/icons-material";
 
-const backendUrl = "http://localhost:3000";
+const backendUrl = "https://collab-app-backend.onrender.com";
 
 // Helper component for video display
 const VideoPlayer = ({ stream, isMuted = false, isFlipped = false, label = "" }) => (
