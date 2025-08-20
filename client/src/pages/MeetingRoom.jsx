@@ -40,7 +40,8 @@ import {
   StopScreenShare,
 } from "@mui/icons-material";
 
-const backendUrl = "https://live-meet-site.onrender.com";
+const backendUrl = "https://collab-app-backend.onrender.com";
+
 const VideoPlayer = ({ stream, isMuted = false, isFlipped = false, label = "" }) => (
   <Paper
     sx={{
@@ -141,7 +142,6 @@ const MeetingRoom = () => {
   const cleanup = useCallback(() => {
     console.log("Cleaning up resources...");
     
-    // Stop all local tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => {
         track.stop();
@@ -150,25 +150,21 @@ const MeetingRoom = () => {
       localStreamRef.current = null;
     }
     
-    // Stop screen share tracks
     if (localScreenStreamRef.current) {
       localScreenStreamRef.current.getTracks().forEach((track) => track.stop());
       localScreenStreamRef.current = null;
     }
     
-    // Close peer connection
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
     
-    // Disconnect socket
     if (socketRef.current) {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
 
-    // Reset refs and states
     remoteStreamRef.current = null;
     remoteScreenStreamRef.current = null;
     originalVideoTrackRef.current = null;
@@ -179,7 +175,6 @@ const MeetingRoom = () => {
     setIsRemoteScreenSharing(false);
   }, []);
 
-  // Initialize socket connection
   useEffect(() => {
     if (!isLoaded) return;
 
@@ -240,7 +235,6 @@ const MeetingRoom = () => {
       
       console.log("✅ Media devices accessed successfully");
       
-      // Join the room
       if (socketRef.current?.connected) {
         socketRef.current.emit("join-meeting", roomId);
         console.log("📡 Joined room:", roomId);
@@ -291,7 +285,6 @@ const MeetingRoom = () => {
       ],
     });
 
-    // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         console.log("📡 Sending ICE candidate");
@@ -302,7 +295,6 @@ const MeetingRoom = () => {
       }
     };
 
-    // Handle incoming remote streams
     pc.ontrack = (event) => {
       console.log("📹 Received remote track:", event.track.kind);
       const stream = event.streams[0];
@@ -311,11 +303,10 @@ const MeetingRoom = () => {
         const track = event.track;
         const settings = track.getSettings();
         
-        // Detect screen share by checking track constraints or label
         const isScreenTrack = settings.displaySurface !== undefined || 
                             track.label.includes("screen") || 
                             track.label.includes("window") ||
-                            settings.width > 1920; // Screen shares are typically high resolution
+                            settings.width > 1920;
         
         if (isScreenTrack) {
           console.log("🖥️ Remote screen share detected");
@@ -328,12 +319,10 @@ const MeetingRoom = () => {
         }
       } else if (event.track.kind === "audio" && stream) {
         console.log("🔊 Remote audio track received");
-        // Add audio to the main remote stream
         if (!remoteStreamRef.current) {
           remoteStreamRef.current = new MediaStream();
         }
         
-        // Remove existing audio tracks to avoid duplicates
         remoteStreamRef.current.getAudioTracks().forEach(track => {
           remoteStreamRef.current.removeTrack(track);
         });
@@ -343,7 +332,6 @@ const MeetingRoom = () => {
       }
     };
 
-    // Handle connection state changes
     pc.oniceconnectionstatechange = () => {
       const state = pc.iceConnectionState;
       console.log("🔗 ICE connection state:", state);
@@ -361,7 +349,6 @@ const MeetingRoom = () => {
       }
     };
 
-    // Add local tracks to peer connection
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => {
         console.log(`➕ Adding ${track.kind} track to peer connection`);
@@ -373,7 +360,6 @@ const MeetingRoom = () => {
     return pc;
   }, [handleUserLeft, roomId]);
 
-  // WebRTC signaling setup
   useEffect(() => {
     if (!isStarted || !socketConnected || !socketRef.current) return;
 
@@ -462,7 +448,6 @@ const MeetingRoom = () => {
     };
   }, [isStarted, socketConnected, roomId, createPeerConnection, handleUserLeft]);
 
-  // Media control functions
   const toggleAudio = () => {
     if (!localStreamRef.current) return;
     
@@ -484,135 +469,109 @@ const MeetingRoom = () => {
       console.log("📹 Video", track.enabled ? "enabled" : "disabled");
     });
   };
-
+  
+  // --- MODIFICATION START: Replaced toggleScreenShare with a more robust version ---
   const toggleScreenShare = async () => {
     if (isScreenShareLoading) {
-      console.log("⏳ Screen share already in progress...");
+      console.log("⏳ Screen share operation already in progress...");
       return;
     }
 
     setIsScreenShareLoading(true);
     setError(null);
 
+    const videoSender = peerConnectionRef.current?.getSenders()
+      .find((sender) => sender.track?.kind === "video");
+
     try {
-      if (!isScreenSharing) {
-        console.log("🖥️ Starting screen share...");
-        
-        // Get screen share stream
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
-          video: {
-            mediaSource: 'screen',
-            width: { max: 1920 },
-            height: { max: 1080 },
-            frameRate: { max: 30 }
-          },
-          audio: false // Avoid audio feedback
-        });
-
-        const screenTrack = screenStream.getVideoTracks()[0];
-        if (!screenTrack) {
-          throw new Error("No screen video track available");
-        }
-
-        // Replace video track in peer connection if connected
-        if (peerConnectionRef.current) {
-          const videoSender = peerConnectionRef.current
-            .getSenders()
-            .find((sender) => sender.track && sender.track.kind === "video");
-
-          if (videoSender) {
-            await videoSender.replaceTrack(screenTrack);
-            console.log("✅ Video track replaced with screen share in peer connection");
-          }
-        }
-
-        // Update local display
-        localScreenStreamRef.current = screenStream;
-        setLocalStream(screenStream);
-        setIsScreenSharing(true);
-
-        // Notify other participants
-        if (socketRef.current?.connected) {
-          socketRef.current.emit("screen-share-start", roomId);
-          console.log("📡 Notified peers about screen share start");
-        }
-
-        // Handle screen share ending (user clicks "Stop sharing")
-        screenTrack.onended = () => {
-          console.log("🛑 Screen share ended by user");
-          toggleScreenShare(); // This will stop screen sharing
-        };
-
-        console.log("✅ Screen sharing started successfully");
-        
-      } else {
+      if (isScreenSharing) {
+        // --- STOPPING SCREEN SHARE ---
         console.log("🛑 Stopping screen share...");
-        
-        // Get original camera track
-        const originalTrack = originalVideoTrackRef.current;
-        if (!originalTrack) {
-          throw new Error("Original camera track not available");
-        }
 
-        // Replace screen track back to camera in peer connection
-        if (peerConnectionRef.current) {
-          const videoSender = peerConnectionRef.current
-            .getSenders()
-            .find((sender) => sender.track && sender.track.kind === "video");
-
-          if (videoSender) {
-            await videoSender.replaceTrack(originalTrack);
-            console.log("✅ Video track replaced back to camera in peer connection");
-          }
-        }
-
-        // Stop screen stream
         if (localScreenStreamRef.current) {
           localScreenStreamRef.current.getTracks().forEach((track) => track.stop());
           localScreenStreamRef.current = null;
         }
 
-        // Restore camera stream display
+        if (videoSender && originalVideoTrackRef.current) {
+          await videoSender.replaceTrack(originalVideoTrackRef.current);
+          console.log("✅ Video track reverted to camera in peer connection");
+        } else {
+           console.warn("Could not revert to camera. Original track or sender not found.");
+        }
+        
         setLocalStream(localStreamRef.current);
         setIsScreenSharing(false);
 
-        // Notify other participants
-        if (socketRef.current?.connected) {
-          socketRef.current.emit("screen-share-stop", roomId);
-          console.log("📡 Notified peers about screen share stop");
+        socketRef.current?.emit("screen-share-stop", roomId);
+        console.log("✅ Screen sharing stopped successfully.");
+
+      } else {
+        // --- STARTING SCREEN SHARE ---
+        console.log("🖥️ Starting screen share...");
+
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            mediaSource: 'screen',
+            width: { ideal: 1920, max: 1920 },
+            height: { ideal: 1080, max: 1080 },
+            frameRate: { max: 30 }
+          },
+          audio: false
+        });
+
+        const screenTrack = screenStream.getVideoTracks()[0];
+        if (!screenTrack) {
+          throw new Error("No video track found in screen share stream.");
         }
 
-        console.log("✅ Screen sharing stopped successfully");
+        if (videoSender) {
+          await videoSender.replaceTrack(screenTrack);
+          console.log("✅ Video track replaced with screen share in peer connection");
+        } else {
+          console.warn("No video sender found. Screen share may not be sent.");
+        }
+        
+        screenTrack.onended = () => {
+          console.log("🛑 Screen share ended by browser UI.");
+          // Use a functional update to get the latest state
+          setIsScreenSharing(isSharing => {
+            if (isSharing) {
+              toggleScreenShare();
+            }
+            return isSharing;
+          });
+        };
+
+        localScreenStreamRef.current = screenStream;
+        setLocalStream(screenStream);
+        setIsScreenSharing(true);
+
+        socketRef.current?.emit("screen-share-start", roomId);
+        console.log("✅ Screen sharing started successfully.");
       }
-      
     } catch (err) {
       console.error("❌ Screen share error:", err);
-      let errorMessage = "Screen sharing failed. ";
-      
+      let errorMessage = "Could not start screen sharing. ";
       if (err.name === "NotAllowedError") {
-        errorMessage += "Permission denied. Please allow screen sharing and try again.";
-      } else if (err.name === "NotSupportedError") {
-        errorMessage += "Screen sharing is not supported in this browser.";
+        errorMessage += "Please grant permission to share your screen.";
       } else {
         errorMessage += err.message;
       }
-      
       setError(errorMessage);
-      
-      // Reset state on error
+
+      setLocalStream(localStreamRef.current);
       setIsScreenSharing(false);
       if (localScreenStreamRef.current) {
         localScreenStreamRef.current.getTracks().forEach(track => track.stop());
         localScreenStreamRef.current = null;
       }
-      setLocalStream(localStreamRef.current);
-      
     } finally {
       setIsScreenShareLoading(false);
     }
   };
+  // --- MODIFICATION END ---
 
-  // Chat functions
   const handleSend = () => {
     if (!message.trim() || !socketConnected || !socketRef.current) return;
 
@@ -635,7 +594,6 @@ const MeetingRoom = () => {
     }
   };
 
-  // Auto-scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat]);
@@ -662,37 +620,40 @@ const MeetingRoom = () => {
     ? "Participant's Screen"
     : "Participant";
 
-  // Picture-in-picture views when screen sharing is active
+  // --- MODIFICATION START: Conditionally mute PiP views ---
   const pipViews = [];
   if (isScreenSharing) {
-    // When you're sharing: show your camera + participant's video as PiP
     pipViews.push({ 
       stream: localStreamRef.current, 
       label: "You (Camera)", 
-      isFlipped: true 
+      isFlipped: true,
+      isMuted: true // Mute your own camera to prevent echo
     });
     if (remoteStream) {
       pipViews.push({ 
         stream: remoteStream, 
-        label: "Participant" 
+        label: "Participant",
+        isMuted: false // IMPORTANT: Participant's PiP is not muted
       });
     }
   } else if (isRemoteScreenSharing) {
-    // When participant is sharing: show your camera + their camera as PiP
     pipViews.push({ 
       stream: localStream, 
       label: "You", 
-      isFlipped: true 
+      isFlipped: true,
+      isMuted: true
     });
     if (remoteStream) {
+      // Muted because their audio is coming from the main screen share view
       pipViews.push({ 
         stream: remoteStream, 
-        label: "Participant (Camera)" 
+        label: "Participant (Camera)",
+        isMuted: true
       });
     }
   }
+  // --- MODIFICATION END ---
 
-  // Pre-meeting screen
   if (!isStarted) {
     return (
       <Container maxWidth="sm" sx={{ 
@@ -705,7 +666,6 @@ const MeetingRoom = () => {
         <Box sx={{ position: "absolute", top: 24, right: 24 }}>
           <UserButton />
         </Box>
-        
         <Box>
           {isLoading && (
             <Box sx={{ mb: 3 }}>
@@ -715,13 +675,11 @@ const MeetingRoom = () => {
               </Typography>
             </Box>
           )}
-          
           {error && (
             <Alert severity="error" sx={{ mb: 3, textAlign: "left" }}>
               {error}
             </Alert>
           )}
-          
           {!isLoading && (
             <Zoom in={true}>
               <Paper sx={{ p: 4, borderRadius: 4, maxWidth: 400 }}>
@@ -735,7 +693,6 @@ const MeetingRoom = () => {
                 <Typography variant="body2" color="text.secondary" mb={4}>
                   {socketConnected ? "Connected to server" : "Connecting..."}
                 </Typography>
-                
                 <Button 
                   onClick={startMeeting} 
                   variant="contained" 
@@ -747,7 +704,6 @@ const MeetingRoom = () => {
                 >
                   Join Meeting
                 </Button>
-                
                 <Typography variant="caption" color="text.secondary" display="block">
                   Make sure to allow camera and microphone access
                 </Typography>
@@ -759,47 +715,18 @@ const MeetingRoom = () => {
     );
   }
 
-  // Chat Component
   const ChatComponent = ({ isDrawer = false }) => (
     <Box sx={{ height: "100%", display: "flex", flexDirection: "column", bgcolor: "white" }}>
-      {/* Chat Header */}
-      <Box sx={{ 
-        p: 2, 
-        borderBottom: "1px solid #e0e0e0", 
-        display: "flex", 
-        justifyContent: "space-between", 
-        alignItems: "center" 
-      }}>
+      <Box sx={{ p: 2, borderBottom: "1px solid #e0e0e0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Typography variant="h6">Chat</Typography>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          {chat.length > 0 && (
-            <Chip 
-              label={chat.length} 
-              size="small" 
-              color="primary" 
-              sx={{ fontSize: "0.75rem" }}
-            />
-          )}
-          {isDrawer && (
-            <IconButton onClick={() => setIsChatOpen(false)} size="small">
-              <Close />
-            </IconButton>
-          )}
+          {chat.length > 0 && (<Chip label={chat.length} size="small" color="primary" sx={{ fontSize: "0.75rem" }}/>)}
+          {isDrawer && (<IconButton onClick={() => setIsChatOpen(false)} size="small"><Close /></IconButton>)}
         </Box>
       </Box>
-      
-      {/* Chat Messages */}
       <Box sx={{ flex: 1, overflowY: "auto", p: 2 }}>
         {chat.length === 0 ? (
-          <Box sx={{ 
-            textAlign: "center", 
-            py: 8, 
-            color: "text.secondary",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 2
-          }}>
+          <Box sx={{ textAlign: "center", py: 8, color: "text.secondary", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
             <ChatBubble sx={{ fontSize: 48, opacity: 0.3 }} />
             <Typography variant="body2">No messages yet</Typography>
             <Typography variant="caption">Start the conversation!</Typography>
@@ -809,32 +736,11 @@ const MeetingRoom = () => {
             {chat.map((msg, idx) => {
               const isOwnMessage = msg.username === (user?.username || user?.firstName || "Anonymous");
               return (
-                <Box
-                  key={idx}
-                  sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: isOwnMessage ? "flex-end" : "flex-start",
-                  }}
-                >
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ mb: 0.5, px: 1 }}
-                  >
+                <Box key={idx} sx={{ display: "flex", flexDirection: "column", alignItems: isOwnMessage ? "flex-end" : "flex-start" }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, px: 1 }}>
                     {msg.username} • {new Date(msg.timestamp).toLocaleTimeString()}
                   </Typography>
-                  <Paper
-                    elevation={1}
-                    sx={{
-                      p: 1.5,
-                      borderRadius: 2,
-                      bgcolor: isOwnMessage ? "primary.main" : "grey.200",
-                      color: isOwnMessage ? "white" : "text.primary",
-                      maxWidth: "80%",
-                      wordWrap: "break-word"
-                    }}
-                  >
+                  <Paper elevation={1} sx={{ p: 1.5, borderRadius: 2, bgcolor: isOwnMessage ? "primary.main" : "grey.200", color: isOwnMessage ? "white" : "text.primary", maxWidth: "80%", wordWrap: "break-word" }}>
                     <Typography variant="body2">{msg.message}</Typography>
                   </Paper>
                 </Box>
@@ -844,64 +750,27 @@ const MeetingRoom = () => {
           </Box>
         )}
       </Box>
-      
-      {/* Chat Input */}
       <Box sx={{ p: 2, borderTop: "1px solid #e0e0e0", display: "flex", gap: 1 }}>
-        <TextField
-          fullWidth
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyPress={handleKeyPress}
-          placeholder="Type a message..."
-          size="small"
-          disabled={!socketConnected}
-        />
-        <IconButton
-          onClick={handleSend}
-          disabled={!message.trim() || !socketConnected}
-          color="primary"
-          sx={{
-            bgcolor: message.trim() && socketConnected ? "primary.main" : "grey.300",
-            color: message.trim() && socketConnected ? "white" : "grey.500",
-            "&:hover": {
-              bgcolor: message.trim() && socketConnected ? "primary.dark" : "grey.400",
-            },
-          }}
-        >
+        <TextField fullWidth value={message} onChange={(e) => setMessage(e.target.value)} onKeyPress={handleKeyPress} placeholder="Type a message..." size="small" disabled={!socketConnected} />
+        <IconButton onClick={handleSend} disabled={!message.trim() || !socketConnected} color="primary" sx={{ bgcolor: message.trim() && socketConnected ? "primary.main" : "grey.300", color: message.trim() && socketConnected ? "white" : "grey.500", "&:hover": { bgcolor: message.trim() && socketConnected ? "primary.dark" : "grey.400" } }}>
           <Send />
         </IconButton>
       </Box>
     </Box>
   );
 
-  // Main meeting interface
   return (
     <Box sx={{ display: "flex", height: "100vh", bgcolor: "grey.100" }}>
-      {/* Video Area */}
       <Box sx={{ flex: 1, display: "flex", flexDirection: "column", p: 2, gap: 2 }}>
-        {/* Connection Status */}
         {!isMobile && (
           <Paper sx={{ p: 2, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-              <Typography variant="h6" fontWeight="600">
-                Meeting Room
-              </Typography>
-              <Chip 
-                label={roomId} 
-                size="small" 
-                variant="outlined"
-                sx={{ fontFamily: "monospace" }}
-              />
+              <Typography variant="h6" fontWeight="600">Meeting Room</Typography>
+              <Chip label={roomId} size="small" variant="outlined" sx={{ fontFamily: "monospace" }} />
             </Box>
-            
             <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                <Box sx={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  bgcolor: isConnected ? "success.main" : (socketConnected ? "warning.main" : "error.main")
-                }} />
+                <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: isConnected ? "success.main" : (socketConnected ? "warning.main" : "error.main") }} />
                 <Typography variant="caption" color="text.secondary">
                   {isConnected ? "Connected" : (socketConnected ? "Waiting for participant" : "Disconnected")}
                 </Typography>
@@ -910,190 +779,58 @@ const MeetingRoom = () => {
             </Box>
           </Paper>
         )}
-
-        {/* Video Display */}
         <Box sx={{ flex: 1, position: "relative" }}>
           {(isScreenSharing || isRemoteScreenSharing) && mainViewStream ? (
             <>
-              {/* Main screen share view */}
               <VideoPlayer stream={mainViewStream} label={mainViewLabel} />
-              
-              {/* Picture-in-picture views */}
-              <Box
-                sx={{
-                  position: "absolute",
-                  bottom: 16,
-                  right: 16,
-                  display: "flex",
-                  gap: 2,
-                  flexDirection: isMobile ? "column" : "row",
-                }}
-              >
+              <Box sx={{ position: "absolute", bottom: 16, right: 16, display: "flex", gap: 2, flexDirection: isMobile ? "column" : "row" }}>
                 {pipViews.map((view) => (
-                  <Box
-                    key={view.label}
-                    sx={{
-                      width: isMobile ? 120 : 200,
-                      height: isMobile ? 90 : 150,
-                      borderRadius: 2,
-                      overflow: "hidden",
-                      boxShadow: 3,
-                      border: "2px solid white",
-                    }}
-                  >
-                    <VideoPlayer
-                      stream={view.stream}
-                      isMuted
-                      isFlipped={view.isFlipped}
-                      label={view.label}
-                    />
+                  <Box key={view.label} sx={{ width: isMobile ? 120 : 200, height: isMobile ? 90 : 150, borderRadius: 2, overflow: "hidden", boxShadow: 3, border: "2px solid white" }}>
+                    {/* --- MODIFICATION START: Use the isMuted property from the view object --- */}
+                    <VideoPlayer stream={view.stream} isMuted={view.isMuted} isFlipped={view.isFlipped} label={view.label} />
+                    {/* --- MODIFICATION END --- */}
                   </Box>
                 ))}
               </Box>
             </>
           ) : (
-            /* Side-by-side view when no screen sharing */
-            <Box sx={{ 
-              display: "flex", 
-              gap: 2, 
-              height: "100%", 
-              flexDirection: isMobile ? "column" : "row" 
-            }}>
+            <Box sx={{ display: "flex", gap: 2, height: "100%", flexDirection: isMobile ? "column" : "row" }}>
               <VideoPlayer stream={localStream} isMuted isFlipped label="You" />
-              <VideoPlayer 
-                stream={remoteStream} 
-                label={isConnected ? "Participant" : "Waiting for participant..."} 
-              />
+              <VideoPlayer stream={remoteStream} label={isConnected ? "Participant" : "Waiting for participant..."} />
             </Box>
           )}
         </Box>
-
-        {/* Controls */}
-        <Paper sx={{ 
-          p: 2, 
-          borderRadius: 2, 
-          display: "flex", 
-          justifyContent: "center", 
-          alignItems: "center",
-          gap: 2,
-          flexWrap: "wrap"
-        }}>
-          <IconButton
-            onClick={toggleAudio}
-            color={isAudioMuted ? "error" : "primary"}
-            sx={{ bgcolor: "background.paper" }}
-          >
+        <Paper sx={{ p: 2, borderRadius: 2, display: "flex", justifyContent: "center", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+          <IconButton onClick={toggleAudio} color={isAudioMuted ? "error" : "primary"} sx={{ bgcolor: "background.paper" }}>
             {isAudioMuted ? <MicOff /> : <Mic />}
           </IconButton>
-          
-          <IconButton
-            onClick={toggleVideo}
-            color={isVideoMuted ? "error" : "primary"}
-            sx={{ bgcolor: "background.paper" }}
-          >
+          <IconButton onClick={toggleVideo} color={isVideoMuted ? "error" : "primary"} sx={{ bgcolor: "background.paper" }}>
             {isVideoMuted ? <VideocamOff /> : <Videocam />}
           </IconButton>
-          
-          <IconButton
-            onClick={toggleScreenShare}
-            disabled={isScreenShareLoading}
-            color={isScreenSharing ? "secondary" : "primary"}
-            sx={{ bgcolor: "background.paper" }}
-            title={isScreenShareLoading ? "Loading..." : (isScreenSharing ? "Stop sharing screen" : "Share screen")}
-          >
-            {isScreenShareLoading ? (
-              <CircularProgress size={24} />
-            ) : isScreenSharing ? (
-              <StopScreenShare />
-            ) : (
-              <ScreenShare />
-            )}
+          <IconButton onClick={toggleScreenShare} disabled={isScreenShareLoading} color={isScreenSharing ? "secondary" : "primary"} sx={{ bgcolor: "background.paper" }} title={isScreenShareLoading ? "Loading..." : (isScreenSharing ? "Stop sharing screen" : "Share screen")}>
+            {isScreenShareLoading ? (<CircularProgress size={24} />) : isScreenSharing ? (<StopScreenShare />) : (<ScreenShare />)}
           </IconButton>
-          
-          <Button
-            onClick={() => setShowLeaveDialog(true)}
-            variant="contained"
-            color="error"
-            startIcon={<CallEnd />}
-            sx={{ ml: 2 }}
-          >
+          <Button onClick={() => setShowLeaveDialog(true)} variant="contained" color="error" startIcon={<CallEnd />} sx={{ ml: 2 }}>
             Leave
           </Button>
         </Paper>
       </Box>
-
-      {/* Desktop Chat Sidebar */}
-      {!isMobile && (
-        <Box sx={{ width: 350, borderLeft: "1px solid #e0e0e0" }}>
-          <ChatComponent />
-        </Box>
-      )}
-
-      {/* Mobile Chat */}
+      {!isMobile && (<Box sx={{ width: 350, borderLeft: "1px solid #e0e0e0" }}><ChatComponent /></Box>)}
       {isMobile && (
         <>
-          <Fab
-            color="primary"
-            sx={{ position: "fixed", bottom: 100, right: 16 }}
-            onClick={() => setIsChatOpen(true)}
-          >
-            <ChatBubble />
-          </Fab>
-          
-          <Dialog open={isChatOpen} onClose={() => setIsChatOpen(false)} fullScreen>
-            <ChatComponent isDrawer />
-          </Dialog>
+          <Fab color="primary" sx={{ position: "fixed", bottom: 100, right: 16 }} onClick={() => setIsChatOpen(true)}><ChatBubble /></Fab>
+          <Dialog open={isChatOpen} onClose={() => setIsChatOpen(false)} fullScreen><ChatComponent isDrawer /></Dialog>
         </>
       )}
-
-      {/* Leave Meeting Dialog */}
-      <Dialog 
-        open={showLeaveDialog} 
-        onClose={() => setShowLeaveDialog(false)}
-        PaperProps={{ sx: { borderRadius: 3, minWidth: 300 } }}
-      >
-        <DialogTitle>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <CallEnd color="error" />
-            <Typography variant="h6">Leave Meeting?</Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Typography>
-            Are you sure you want to leave this meeting? This action cannot be undone.
-          </Typography>
-        </DialogContent>
+      <Dialog open={showLeaveDialog} onClose={() => setShowLeaveDialog(false)} PaperProps={{ sx: { borderRadius: 3, minWidth: 300 } }}>
+        <DialogTitle><Box sx={{ display: "flex", alignItems: "center", gap: 2 }}><CallEnd color="error" /><Typography variant="h6">Leave Meeting?</Typography></Box></DialogTitle>
+        <DialogContent><Typography>Are you sure you want to leave this meeting? This action cannot be undone.</Typography></DialogContent>
         <DialogActions sx={{ gap: 1, p: 3 }}>
-          <Button onClick={() => setShowLeaveDialog(false)} variant="outlined">
-            Cancel
-          </Button>
-          <Button 
-            onClick={leaveMeeting} 
-            color="error" 
-            variant="contained"
-            startIcon={<CallEnd />}
-          >
-            Leave Meeting
-          </Button>
+          <Button onClick={() => setShowLeaveDialog(false)} variant="outlined">Cancel</Button>
+          <Button onClick={leaveMeeting} color="error" variant="contained" startIcon={<CallEnd />}>Leave Meeting</Button>
         </DialogActions>
       </Dialog>
-
-      {/* Error Alert */}
-      {error && (
-        <Alert
-          severity="error"
-          sx={{
-            position: "fixed",
-            bottom: 16,
-            left: 16,
-            right: isMobile ? 16 : 366, // Account for chat sidebar on desktop
-            zIndex: 1300,
-          }}
-          onClose={() => setError(null)}
-        >
-          {error}
-        </Alert>
-      )}
+      {error && (<Alert severity="error" sx={{ position: "fixed", bottom: 16, left: 16, right: isMobile ? 16 : 366, zIndex: 1300 }} onClose={() => setError(null)}>{error}</Alert>)}
     </Box>
   );
 };
