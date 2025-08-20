@@ -1,7 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const setupSocket = require('./socketlogic/socket');
+const setupSocket = require('./socketlogic/socketx');
 
 const app = express();
 const server = http.createServer(app);
