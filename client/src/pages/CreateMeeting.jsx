@@ -4,29 +4,11 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { v4 as uuidv4 } from "uuid"
 import { UserButton } from "@clerk/clerk-react"
-import { 
-  Box, 
-  Button, 
-  Typography, 
-  Paper, 
-  Container, 
-  IconButton, 
-  Snackbar, 
-  Alert, 
-  Zoom, 
-  Fade,
-  useTheme,
-  useMediaQuery 
-} from "@mui/material"
-import { Add, ContentCopy, VideoCall, Link as LinkIcon } from "@mui/icons-material"
 
 const CreateMeeting = () => {
   const [meetingLink, setMeetingLink] = useState("")
   const [showCopyAlert, setShowCopyAlert] = useState(false)
   const navigate = useNavigate()
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
-  const isTablet = useMediaQuery(theme.breakpoints.down('md'))
 
   const handleCreateMeeting = () => {
     const meetingId = uuidv4()
@@ -39,335 +21,210 @@ const CreateMeeting = () => {
     if (meetingLink) {
       navigator.clipboard.writeText(meetingLink)
       setShowCopyAlert(true)
+      setTimeout(() => setShowCopyAlert(false), 3000)
     }
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        bgcolor: "#f8f9fa",
-        position: "relative",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative flex flex-col overflow-hidden">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500/5 rounded-full blur-3xl animate-pulse delay-500"></div>
+      </div>
+
       {/* Header with User Button */}
-      <Box
-        sx={{
-          position: "absolute",
-          top: { xs: 16, sm: 24 },
-          right: { xs: 16, sm: 24 },
-          zIndex: 10,
-        }}
-      >
-        <UserButton
-          appearance={{
-            elements: {
-              avatarBox: {
-                width: isMobile ? "36px" : "44px",
-                height: isMobile ? "36px" : "44px",
-                borderRadius: "12px",
-                border: "2px solid #e5e7eb",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-              },
-              userButtonPopoverCard: {
-                borderRadius: "12px",
-                boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
-                border: "1px solid #e5e7eb",
-              },
-              userButtonPopoverActionButton: {
-                borderRadius: "8px",
-                "&:hover": {
-                  backgroundColor: "#f3f4f6",
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20">
+        <div className="backdrop-blur-md bg-white/10 rounded-2xl p-1 border border-white/20 shadow-2xl">
+          <UserButton
+            appearance={{
+              elements: {
+                avatarBox: {
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "12px",
+                  border: "2px solid rgba(255,255,255,0.2)",
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+                },
+                userButtonPopoverCard: {
+                  borderRadius: "16px",
+                  boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  backgroundColor: "rgba(15, 23, 42, 0.95)",
+                  backdropFilter: "blur(20px)",
+                },
+                userButtonPopoverActionButton: {
+                  borderRadius: "12px",
+                  "&:hover": {
+                    backgroundColor: "rgba(255,255,255,0.1)",
+                  },
+                },
+                userButtonPopoverActionButtonText: {
+                  color: "#e2e8f0",
+                  fontWeight: "500",
+                },
+                userButtonPopoverActionButtonIcon: {
+                  color: "#94a3b8",
                 },
               },
-              userButtonPopoverActionButtonText: {
-                color: "#374151",
-                fontWeight: "500",
-              },
-              userButtonPopoverActionButtonIcon: {
-                color: "#6b7280",
-              },
-            },
-          }}
-        />
-      </Box>
+            }}
+          />
+        </div>
+      </div>
 
       {/* Main Content */}
-      <Box
-        sx={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          px: { xs: 2, sm: 3, md: 4 },
-          py: { xs: 4, sm: 6 },
-        }}
-      >
-        <Container 
-          maxWidth="sm" 
-          sx={{
-            width: "100%",
-            maxWidth: { xs: "100%", sm: "500px", md: "600px" }
-          }}
-        >
-          <Zoom in timeout={600}>
-            <Box
-              sx={{
-                textAlign: "center",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: { xs: 3, sm: 4 },
-                pt: { xs: 6, sm: 4 }, // Extra top padding on mobile for user button
-              }}
-            >
-              {/* Icon */}
-              <Box
-                sx={{
-                  width: { xs: 80, sm: 100, md: 120 },
-                  height: { xs: 80, sm: 100, md: 120 },
-                  borderRadius: "50%",
-                  bgcolor: "white",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
-                  mb: { xs: 1, sm: 2 },
-                }}
-              >
-                <VideoCall sx={{ 
-                  fontSize: { xs: 40, sm: 50, md: 60 }, 
-                  color: "#1976d2" 
-                }} />
-              </Box>
-
-              {/* Title */}
-              <Box sx={{ px: { xs: 1, sm: 0 } }}>
-                <Typography
-                  variant="h3"
-                  fontWeight="600"
-                  color="#1a1a1a"
-                  sx={{
-                    mb: { xs: 1, sm: 2 },
-                    fontSize: { 
-                      xs: "1.75rem", 
-                      sm: "2.25rem", 
-                      md: "2.75rem",
-                      lg: "3rem" 
-                    },
-                    lineHeight: { xs: 1.2, sm: 1.1 },
-                  }}
-                >
-                  Create Meeting
-                </Typography>
-                <Typography
-                  variant="h6"
-                  color="#6b7280"
-                  sx={{
-                    fontWeight: 400,
-                    fontSize: { xs: "0.95rem", sm: "1.1rem", md: "1.25rem" },
-                    lineHeight: 1.4,
-                    px: { xs: 2, sm: 0 },
-                  }}
-                >
-                  Start a new video meeting instantly
-                </Typography>
-              </Box>
-
-              {/* Create Button */}
-              <Button
-                onClick={handleCreateMeeting}
-                startIcon={<Add sx={{ fontSize: { xs: 20, sm: 24 } }} />}
-                sx={{
-                  px: { xs: 4, sm: 6 },
-                  py: { xs: 2, sm: 2.5 },
-                  borderRadius: 2,
-                  fontSize: { xs: "1rem", sm: "1.1rem" },
-                  fontWeight: "600",
-                  bgcolor: "#1976d2",
-                  color: "white",
-                  textTransform: "none",
-                  boxShadow: "0 2px 8px rgba(25,118,210,0.2)",
-                  minHeight: { xs: 48, sm: 56 }, // Touch-friendly height
-                  width: { xs: "100%", sm: "auto" },
-                  maxWidth: { xs: "280px", sm: "none" },
-                  "&:hover": {
-                    bgcolor: "#1565c0",
-                    boxShadow: "0 4px 12px rgba(25,118,210,0.3)",
-                    transform: "translateY(-1px)",
-                  },
-                  transition: "all 0.2s ease",
-                }}
-              >
-                Create Meeting
-              </Button>
-
-              {/* Meeting Link Display */}
-              {meetingLink && (
-                <Fade in timeout={800}>
-                  <Paper
-                    sx={{
-                      p: { xs: 3, sm: 4 },
-                      bgcolor: "white",
-                      borderRadius: 2,
-                      border: "1px solid #e5e7eb",
-                      width: "100%",
-                      maxWidth: { xs: "100%", sm: "500px" },
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                    }}
+      <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8 py-8 sm:py-12 relative z-10">
+        <div className="w-full max-w-md sm:max-w-lg lg:max-w-xl">
+          <div className="text-center space-y-6 sm:space-y-8 animate-fade-in">
+            {/* Icon with glow effect */}
+            <div className="flex justify-center mb-6 sm:mb-8">
+              <div className="relative">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28 bg-gradient-to-br from-cyan-400 to-purple-500 rounded-full flex items-center justify-center shadow-2xl animate-pulse">
+                  <div className="absolute inset-0 bg-gradient-to-br from-cyan-400 to-purple-500 rounded-full blur-xl opacity-50 animate-pulse"></div>
+                  <svg
+                    className="w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 text-white relative z-10"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    <Box sx={{ 
-                      display: "flex", 
-                      alignItems: "center", 
-                      gap: 1, 
-                      mb: 2,
-                      justifyContent: { xs: "center", sm: "flex-start" }
-                    }}>
-                      <LinkIcon sx={{ fontSize: 20, color: "#6b7280" }} />
-                      <Typography 
-                        variant="h6" 
-                        fontWeight="600" 
-                        color="#1a1a1a"
-                        sx={{ fontSize: { xs: "1.1rem", sm: "1.25rem" } }}
-                      >
-                        Meeting Link
-                      </Typography>
-                    </Box>
+                    <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4zM14 13h-3v3H9v-3H6v-2h3V8h2v3h3v2z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
 
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexDirection: { xs: "column", sm: "row" },
-                        alignItems: { xs: "stretch", sm: "center" },
-                        gap: { xs: 2, sm: 2 },
-                        p: 2,
-                        bgcolor: "#f9fafb",
-                        borderRadius: 1,
-                        border: "1px solid #e5e7eb",
-                      }}
-                    >
-                      <Typography
-                        sx={{
-                          flex: 1,
-                          fontFamily: "monospace",
-                          fontSize: { xs: "0.8rem", sm: "0.875rem" },
-                          color: "#1976d2",
-                          wordBreak: "break-all",
-                          lineHeight: 1.4,
-                          textAlign: { xs: "center", sm: "left" },
-                          p: { xs: 1, sm: 0 },
-                        }}
-                      >
-                        {meetingLink}
-                      </Typography>
-                      <IconButton
-                        onClick={handleCopy}
-                        sx={{
-                          width: { xs: 48, sm: 40 },
-                          height: { xs: 48, sm: 40 },
-                          bgcolor: "#10b981",
-                          color: "white",
-                          alignSelf: { xs: "center", sm: "auto" },
-                          "&:hover": {
-                            bgcolor: "#059669",
-                            transform: "scale(1.05)",
-                          },
-                          transition: "all 0.2s ease",
-                        }}
-                      >
-                        <ContentCopy sx={{ fontSize: { xs: 20, sm: 18 } }} />
-                      </IconButton>
-                    </Box>
+            {/* Title Section */}
+            <div className="space-y-3 sm:space-y-4">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-white via-cyan-200 to-purple-200 bg-clip-text text-transparent leading-tight">
+                Create Meeting
+              </h1>
+              <p className="text-slate-300 text-base sm:text-lg lg:text-xl font-medium max-w-md mx-auto leading-relaxed">
+                Start a new video meeting instantly with advanced features
+              </p>
+            </div>
 
-                    <Typography 
-                      variant="body2" 
-                      color="#6b7280" 
-                      sx={{ 
-                        mt: 2, 
-                        textAlign: "center",
-                        fontSize: { xs: "0.85rem", sm: "0.875rem" },
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      Share this link with participants to join the meeting
-                    </Typography>
-                  </Paper>
-                </Fade>
-              )}
-
-              {/* Additional Info */}
-              <Paper
-                sx={{
-                  p: { xs: 2.5, sm: 3 },
-                  bgcolor: "#eff6ff",
-                  border: "1px solid #bfdbfe",
-                  borderRadius: 2,
-                  width: "100%",
-                  maxWidth: { xs: "100%", sm: "400px" },
-                }}
+            {/* Create Button */}
+            <div className="pt-4 sm:pt-6">
+              <button
+                onClick={handleCreateMeeting}
+                className="group relative w-full sm:w-auto px-8 sm:px-12 py-4 sm:py-5 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 rounded-2xl font-semibold text-white text-base sm:text-lg transition-all duration-300 transform hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/25 focus:outline-none focus:ring-4 focus:ring-cyan-500/50"
               >
-                <Typography 
-                  variant="body2" 
-                  color="#1e40af" 
-                  sx={{ 
-                    fontWeight: 500, 
-                    mb: 1,
-                    fontSize: { xs: "0.9rem", sm: "0.875rem" },
-                    textAlign: { xs: "center", sm: "left" }
-                  }}
-                >
-                  💡 Quick Start Tips
-                </Typography>
-                <Typography 
-                  variant="body2" 
-                  color="#1e40af" 
-                  sx={{ 
-                    lineHeight: 1.6,
-                    fontSize: { xs: "0.85rem", sm: "0.875rem" },
-                    textAlign: { xs: "center", sm: "left" }
-                  }}
-                >
-                  • Allow camera and microphone access when prompted
-                  <br />• Share the meeting link with participants
-                  <br />• Meeting starts as soon as you join
-                </Typography>
-              </Paper>
-            </Box>
-          </Zoom>
+                <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-purple-600 rounded-2xl blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-300"></div>
+                <div className="relative flex items-center justify-center space-x-3">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span>Create Meeting</span>
+                </div>
+              </button>
+            </div>
 
-          {/* Copy Success Alert */}
-          <Snackbar
-            open={showCopyAlert}
-            autoHideDuration={3000}
-            onClose={() => setShowCopyAlert(false)}
-            anchorOrigin={{ 
-              vertical: "bottom", 
-              horizontal: "center" 
-            }}
-            sx={{
-              bottom: { xs: 80, sm: 24 }, // Higher on mobile to avoid nav bars
-            }}
-          >
-            <Alert
-              onClose={() => setShowCopyAlert(false)}
-              severity="success"
-              sx={{
-                bgcolor: "#10b981",
-                color: "white",
-                fontSize: { xs: "0.85rem", sm: "0.875rem" },
-                "& .MuiAlert-icon": {
-                  color: "white",
-                },
-              }}
-            >
-              Meeting link copied to clipboard!
-            </Alert>
-          </Snackbar>
-        </Container>
-      </Box>
-    </Box>
+            {/* Meeting Link Display */}
+            {meetingLink && (
+              <div className="animate-slide-up pt-6 sm:pt-8">
+                <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-6 shadow-2xl">
+                  <div className="flex items-center justify-center space-x-2 mb-4">
+                    <svg className="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                      />
+                    </svg>
+                    <h3 className="text-lg sm:text-xl font-semibold text-white">Meeting Link</h3>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-3 sm:space-y-0 sm:space-x-3 p-3 sm:p-4 bg-slate-800/50 border border-slate-700/50 rounded-xl">
+                      <div className="flex-1 font-mono text-xs sm:text-sm text-cyan-300 break-all text-center sm:text-left py-2 sm:py-0">
+                        {meetingLink}
+                      </div>
+                      <button
+                        onClick={handleCopy}
+                        className="flex-shrink-0 w-full sm:w-auto px-4 py-3 sm:px-4 sm:py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 rounded-lg font-medium text-white transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                      >
+                        <div className="flex items-center justify-center space-x-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                            />
+                          </svg>
+                          <span className="sm:hidden">Copy Link</span>
+                          <span className="hidden sm:inline">Copy</span>
+                        </div>
+                      </button>
+                    </div>
+
+                    <p className="text-slate-400 text-sm text-center leading-relaxed">
+                      Share this link with participants to join the meeting
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tips Section */}
+            <div className="pt-6 sm:pt-8">
+              <div className="backdrop-blur-md bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-400/20 rounded-2xl p-4 sm:p-6 shadow-xl">
+                <div className="flex items-center justify-center space-x-2 mb-3">
+                  <span className="text-xl">💡</span>
+                  <h4 className="text-base sm:text-lg font-semibold text-blue-200">Quick Start Tips</h4>
+                </div>
+                <div className="text-blue-100 text-sm sm:text-base space-y-2 text-center sm:text-left">
+                  <div className="flex items-center justify-center sm:justify-start space-x-2">
+                    <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full flex-shrink-0"></span>
+                    <span>Allow camera and microphone access when prompted</span>
+                  </div>
+                  <div className="flex items-center justify-center sm:justify-start space-x-2">
+                    <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full flex-shrink-0"></span>
+                    <span>Share the meeting link with participants</span>
+                  </div>
+                  <div className="flex items-center justify-center sm:justify-start space-x-2">
+                    <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full flex-shrink-0"></span>
+                    <span>Meeting starts as soon as you join</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Copy Success Alert */}
+      {showCopyAlert && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 animate-slide-up">
+          <div className="backdrop-blur-md bg-emerald-500/90 border border-emerald-400/50 rounded-xl px-6 py-4 shadow-2xl">
+            <div className="flex items-center space-x-3">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="text-white font-medium">Meeting link copied to clipboard!</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slide-up {
+          from { opacity: 0; transform: translateY(30px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.8s ease-out;
+        }
+        .animate-slide-up {
+          animation: slide-up 0.6s ease-out;
+        }
+      `}</style>
+    </div>
   )
 }
 
