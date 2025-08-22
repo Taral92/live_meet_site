@@ -22,39 +22,51 @@ import {
 
 const backendUrl = "https://live-meet-site.onrender.com"
 
-// Enhanced Video Player with futuristic styling
 const VideoPlayer = ({ stream, isMuted = false, isFlipped = false, label = "", className = "" }) => (
   <div
-    className={`relative w-full h-full bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-700/50 ${className}`}
+    className={`relative w-full h-full bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-700/50 transition-all duration-300 ${className}`}
   >
     <video
       ref={(el) => {
-        if (el && stream) el.srcObject = stream
+        if (el && stream) {
+          el.srcObject = stream
+          el.play().catch(console.error)
+        }
       }}
       autoPlay
       playsInline
       muted={isMuted}
-      className={`w-full h-full object-cover ${isFlipped ? "scale-x-[-1]" : ""}`}
-      style={{ transform: isFlipped ? "scaleX(-1)" : "none" }} // Use inline style for stable transform
+      className={`w-full h-full object-cover transition-transform duration-300 ${isFlipped ? "scale-x-[-1]" : ""}`}
+      style={{ transform: isFlipped ? "scaleX(-1)" : "none" }}
     />
     {label && (
-      <div className="absolute top-4 left-4 px-3 py-1 bg-black/70 backdrop-blur-sm text-white text-sm rounded-full border border-cyan-500/30 shadow-lg">
+      <div className="absolute top-4 left-4 px-3 py-2 bg-black/80 backdrop-blur-md text-white text-sm rounded-xl border border-cyan-500/30 shadow-lg transition-all duration-300">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 bg-cyan-400 rounded-full"></div> {/* Removed animate-pulse to prevent shaking */}
-          {label}
+          <div className="w-2 h-2 bg-cyan-400 rounded-full shadow-lg shadow-cyan-400/50"></div>
+          <span className="font-medium">{label}</span>
         </div>
       </div>
     )}
     {!stream && (
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
-        <div className="relative">
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-gradient-to-br from-gray-800 to-gray-900">
+        <div className="relative mb-4">
           <div className="w-16 h-16 border-4 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin"></div>
-          <div className="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-purple-400/50 rounded-full animate-spin animate-reverse"></div>
+          <div
+            className="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-purple-400/50 rounded-full animate-spin"
+            style={{ animationDirection: "reverse" }}
+          ></div>
         </div>
-        <p className="mt-4 text-gray-300 text-sm">Waiting for video...</p>
+        <p className="text-gray-300 text-sm font-medium">Connecting...</p>
+        <div className="mt-2 flex items-center gap-2">
+          <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse"></div>
+          <div className="w-1 h-1 bg-purple-400 rounded-full animate-pulse" style={{ animationDelay: "0.2s" }}></div>
+          <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse" style={{ animationDelay: "0.4s" }}></div>
+        </div>
       </div>
     )}
-    <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none"></div>
+    <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none"></div>
+
+    <div className="absolute top-0 right-0 w-8 h-8 bg-gradient-to-bl from-cyan-500/20 to-transparent rounded-bl-2xl"></div>
   </div>
 )
 
@@ -467,8 +479,16 @@ const MeetingRoom = () => {
           await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
       },
       "user-left": handleUserLeft,
-      "peer-screen-share-start": () => setIsRemoteScreenSharing(true),
-      "peer-screen-share-stop": () => setIsRemoteScreenSharing(false),
+      "peer-screen-share-start": () => {
+        console.log("Participant started screen sharing")
+        setIsRemoteScreenSharing(true)
+      },
+      "peer-screen-share-stop": () => {
+        console.log("Participant stopped screen sharing - returning to normal video call")
+        setIsRemoteScreenSharing(false)
+        // Clear any remote screen stream references
+        remoteScreenStreamRef.current = null
+      },
       "chat-message": (data) => {
         setChat((prev) => [...prev, { ...data, seen: false, id: Date.now() + Math.random() }])
         const currentUsername = user?.username || user?.firstName || "Anonymous"
@@ -505,6 +525,7 @@ const MeetingRoom = () => {
     setError(null)
 
     const videoSender = peerConnectionRef.current?.getSenders().find((s) => s.track?.kind === "video")
+    const audioSender = peerConnectionRef.current?.getSenders().find((s) => s.track?.kind === "audio")
 
     try {
       if (isScreenSharing) {
@@ -512,35 +533,110 @@ const MeetingRoom = () => {
           localScreenStreamRef.current.getTracks().forEach((track) => track.stop())
           localScreenStreamRef.current = null
         }
+
+        // Restore original video track
         if (videoSender && originalVideoTrackRef.current) {
           await videoSender.replaceTrack(originalVideoTrackRef.current)
         }
-        setLocalStream(localStreamRef.current)
+
+        // Restore original audio track
+        const originalAudioTrack = localStreamRef.current?.getAudioTracks()[0]
+        if (audioSender && originalAudioTrack) {
+          await audioSender.replaceTrack(originalAudioTrack)
+        }
+
         setIsScreenSharing(false)
         socketRef.current?.emit("screen-share-stop", roomId)
+        console.log("Screen sharing stopped - notified participants")
       } else {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true })
-        const screenTrack = screenStream.getVideoTracks()[0]
-        if (!screenTrack) throw new Error("No screen track found.")
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            cursor: "always",
+            displaySurface: "monitor",
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: false,
+            sampleRate: 48000, // Better audio quality for system sounds
+          },
+        })
 
-        if (videoSender) await videoSender.replaceTrack(screenTrack)
+        const screenVideoTrack = screenStream.getVideoTracks()[0]
+        const screenAudioTrack = screenStream.getAudioTracks()[0]
 
-        screenTrack.onended = () => {
-          setIsScreenSharing((isSharing) => {
-            if (isSharing) toggleScreenShare()
-            return false
-          })
+        if (!screenVideoTrack) throw new Error("No screen video track found.")
+
+        // Store original video track if not already stored
+        if (!originalVideoTrackRef.current && localStreamRef.current) {
+          originalVideoTrackRef.current = localStreamRef.current.getVideoTracks()[0]
+        }
+
+        // Replace video track with screen
+        if (videoSender) await videoSender.replaceTrack(screenVideoTrack)
+
+        if (screenAudioTrack && audioSender) {
+          // Create audio context for mixing system audio with microphone
+          const audioContext = new AudioContext()
+          const destination = audioContext.createMediaStreamDestination()
+
+          // Add screen audio
+          const screenAudioSource = audioContext.createMediaStreamSource(screenStream)
+          screenAudioSource.connect(destination)
+
+          // Add microphone audio if available
+          if (localStreamRef.current?.getAudioTracks()[0]) {
+            const micAudioSource = audioContext.createMediaStreamSource(localStreamRef.current)
+            const micGain = audioContext.createGain()
+            micGain.gain.value = 0.7 // Reduce mic volume slightly when screen sharing
+            micAudioSource.connect(micGain)
+            micGain.connect(destination)
+          }
+
+          const mixedAudioTrack = destination.stream.getAudioTracks()[0]
+          await audioSender.replaceTrack(mixedAudioTrack)
+          console.log("Mixed audio track created for system sound + microphone")
+        }
+
+        screenVideoTrack.onended = () => {
+          console.log("Screen share ended by user - cleaning up")
+          if (isScreenSharing) {
+            setIsScreenSharing(false)
+
+            // Clean up screen stream
+            if (localScreenStreamRef.current) {
+              localScreenStreamRef.current.getTracks().forEach((track) => track.stop())
+              localScreenStreamRef.current = null
+            }
+
+            // Restore original tracks
+            if (videoSender && originalVideoTrackRef.current) {
+              videoSender.replaceTrack(originalVideoTrackRef.current).catch(console.error)
+            }
+            if (audioSender && localStreamRef.current?.getAudioTracks()[0]) {
+              audioSender.replaceTrack(localStreamRef.current.getAudioTracks()[0]).catch(console.error)
+            }
+
+            socketRef.current?.emit("screen-share-stop", roomId)
+          }
         }
 
         localScreenStreamRef.current = screenStream
-        setLocalStream(screenStream)
         setIsScreenSharing(true)
         socketRef.current?.emit("screen-share-start", roomId)
+        console.log("Screen sharing started - notified participants")
       }
     } catch (err) {
-      setError("Could not start screen sharing. Please grant permission.")
-      setLocalStream(localStreamRef.current)
+      console.error("Screen sharing error:", err)
+      setError("Could not start screen sharing. Please grant permission and try again.")
+
+      if (localScreenStreamRef.current) {
+        localScreenStreamRef.current.getTracks().forEach((track) => track.stop())
+        localScreenStreamRef.current = null
+      }
+
       setIsScreenSharing(false)
+      socketRef.current?.emit("screen-share-stop", roomId)
     } finally {
       setIsScreenShareLoading(false)
     }
@@ -579,7 +675,7 @@ const MeetingRoom = () => {
   }
 
   const mainViewStream = isScreenSharing
-    ? localStream
+    ? localScreenStreamRef.current
     : isRemoteScreenSharing
       ? remoteScreenStreamRef.current || remoteStream
       : remoteStream
@@ -699,51 +795,60 @@ const MeetingRoom = () => {
       {/* Main content area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Video display area */}
-        <div className="flex-1 p-2 md:p-4 pb-20 md:pb-24">
+        <div className="flex-1 p-2 md:p-4 pb-20 md:pb-24 transition-all duration-500">
           <div className="w-full h-full relative">
             {(isScreenSharing || isRemoteScreenSharing) && mainViewStream ? (
               <>
-                <div className="flex gap-2 md:gap-4 h-full">
+                <div className="flex gap-2 md:gap-4 h-full transition-all duration-500">
                   {/* Main screen share area */}
-                  <div className="flex-1 bg-black rounded-xl md:rounded-2xl overflow-hidden shadow-2xl">
+                  <div className="flex-1 bg-black rounded-xl md:rounded-2xl overflow-hidden shadow-2xl transition-all duration-300">
                     <VideoPlayer stream={mainViewStream} label={mainViewLabel} className="w-full h-full" />
                   </div>
 
-                  {/* Participants sidebar during screen sharing */}
-                  <div className="w-48 md:w-64 lg:w-80 flex flex-col gap-2 md:gap-3">
-                    <div className="flex-1 bg-gray-800/50 rounded-xl md:rounded-2xl p-3 md:p-4 backdrop-blur-xl border border-gray-700/50">
+                  <div className="w-48 md:w-64 lg:w-80 flex flex-col gap-2 md:gap-3 transition-all duration-500">
+                    <div className="flex-1 bg-gradient-to-br from-gray-800/60 to-gray-900/60 rounded-xl md:rounded-2xl p-3 md:p-4 backdrop-blur-xl border border-gray-700/50 shadow-xl">
                       <div className="flex items-center gap-2 mb-3 md:mb-4">
-                        <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>{" "}
-                        {/* Removed animate-pulse to prevent shaking */}
-                        <span className="text-white text-sm md:text-base font-medium">Participants</span>
+                        <div className="w-3 h-3 bg-gradient-to-r from-cyan-400 to-purple-400 rounded-full shadow-lg shadow-cyan-400/50"></div>
+                        <span className="text-white text-sm md:text-base font-semibold">Participants</span>
+                        <div className="ml-auto px-2 py-1 bg-gray-700/50 rounded-full text-xs text-gray-300">
+                          {remoteStream ? "2" : "1"}
+                        </div>
                       </div>
 
                       <div className="space-y-2 md:space-y-3">
-                        {/* Your camera feed */}
-                        <div className="aspect-video bg-gray-900 rounded-lg md:rounded-xl overflow-hidden border border-gray-600/50">
+                        <div className="aspect-video bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg md:rounded-xl overflow-hidden border border-gray-600/50 shadow-lg transition-all duration-300 hover:border-cyan-500/30">
                           <VideoPlayer
-                            stream={localStreamRef.current}
+                            stream={localStreamRef.current || localStream}
                             isMuted
                             isFlipped
-                            label="You"
+                            label="You (Camera)"
                             className="w-full h-full"
                           />
                         </div>
 
-                        {/* Remote participant camera feed */}
                         {remoteStream && (
-                          <div className="aspect-video bg-gray-900 rounded-lg md:rounded-xl overflow-hidden border border-gray-600/50">
-                            <VideoPlayer stream={remoteStream} label="Participant" className="w-full h-full" />
+                          <div className="aspect-video bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg md:rounded-xl overflow-hidden border border-gray-600/50 shadow-lg transition-all duration-300 hover:border-purple-500/30">
+                            <VideoPlayer stream={remoteStream} label="Participant (Camera)" className="w-full h-full" />
                           </div>
                         )}
 
-                        {/* Waiting for participants message */}
                         {!remoteStream && (
-                          <div className="aspect-video bg-gray-900/50 rounded-lg md:rounded-xl border border-gray-600/30 border-dashed flex flex-col items-center justify-center text-center p-3">
-                            <div className="w-8 h-8 md:w-10 md:h-10 bg-gray-700/50 rounded-full flex items-center justify-center mb-2">
+                          <div className="aspect-video bg-gradient-to-br from-gray-900/50 to-gray-800/50 rounded-lg md:rounded-xl border border-gray-600/50 border-dashed flex flex-col items-center justify-center text-center p-3 transition-all duration-300">
+                            <div className="w-8 h-8 md:w-10 md:h-10 bg-gradient-to-r from-gray-700/50 to-gray-600/50 rounded-full flex items-center justify-center mb-2 shadow-lg">
                               <VideoCall className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
                             </div>
-                            <p className="text-gray-400 text-xs md:text-sm">Waiting for participants</p>
+                            <p className="text-gray-400 text-xs md:text-sm font-medium">Waiting for participants</p>
+                            <div className="mt-2 flex items-center gap-1">
+                              <div className="w-1 h-1 bg-gray-500 rounded-full animate-pulse"></div>
+                              <div
+                                className="w-1 h-1 bg-gray-500 rounded-full animate-pulse"
+                                style={{ animationDelay: "0.2s" }}
+                              ></div>
+                              <div
+                                className="w-1 h-1 bg-gray-500 rounded-full animate-pulse"
+                                style={{ animationDelay: "0.4s" }}
+                              ></div>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -751,34 +856,38 @@ const MeetingRoom = () => {
                   </div>
                 </div>
 
-                {/* Status indicators overlay */}
                 <div className="absolute top-2 md:top-4 left-2 md:left-4 flex flex-col gap-2">
                   {isScreenSharing && (
-                    <div className="px-3 md:px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg md:rounded-xl text-red-400 text-xs md:text-sm backdrop-blur-xl">
+                    <div className="px-3 md:px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg md:rounded-xl text-red-400 text-xs md:text-sm backdrop-blur-xl shadow-lg transition-all duration-300">
                       <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-red-400 rounded-full"></div>{" "}
-                        {/* Removed animate-pulse to prevent shaking */}
-                        <span className="hidden sm:inline">You are sharing your screen</span>
-                        <span className="sm:hidden">Sharing</span>
+                        <div className="w-2 h-2 bg-red-400 rounded-full shadow-lg shadow-red-400/50"></div>
+                        <span className="hidden sm:inline font-medium">You are sharing your screen</span>
+                        <span className="sm:hidden font-medium">Sharing</span>
                       </div>
                     </div>
                   )}
                   {isRemoteScreenSharing && (
-                    <div className="px-3 md:px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg md:rounded-xl text-purple-400 text-xs md:text-sm backdrop-blur-xl">
+                    <div className="px-3 md:px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg md:rounded-xl text-purple-400 text-xs md:text-sm backdrop-blur-xl shadow-lg transition-all duration-300">
                       <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-purple-400 rounded-full"></div>{" "}
-                        {/* Removed animate-pulse to prevent shaking */}
-                        <span className="hidden sm:inline">Viewing shared screen</span>
-                        <span className="sm:hidden">Viewing</span>
+                        <div className="w-2 h-2 bg-purple-400 rounded-full shadow-lg shadow-purple-400/50"></div>
+                        <span className="hidden sm:inline font-medium">Viewing shared screen</span>
+                        <span className="sm:hidden font-medium">Viewing</span>
                       </div>
                     </div>
                   )}
                 </div>
               </>
             ) : (
-              <div className="flex gap-2 md:gap-4 h-full flex-col md:flex-row">
-                <VideoPlayer stream={localStream} isMuted isFlipped label="You" />
-                <VideoPlayer stream={remoteStream} label={isConnected ? "Participant" : "Waiting for participant..."} />
+              <div className="flex gap-2 md:gap-4 h-full flex-col md:flex-row transition-all duration-500">
+                <div className="flex-1 transition-all duration-300">
+                  <VideoPlayer stream={localStream} isMuted isFlipped label="You" />
+                </div>
+                <div className="flex-1 transition-all duration-300">
+                  <VideoPlayer
+                    stream={remoteStream}
+                    label={isConnected ? "Participant" : "Waiting for participant..."}
+                  />
+                </div>
               </div>
             )}
           </div>
