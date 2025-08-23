@@ -1,7 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Fix @custom-variant syntax - should only define the variant, not contain CSS rules */
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -76,9 +75,7 @@
 }
 
 @theme inline {
-  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
-    "Noto Color Emoji";
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -126,57 +123,51 @@
   }
 }
 
-/* Custom animations for screen sharing layout */
-@keyframes slide-in-right {
+@keyframes fade-in {
   from {
-    transform: translateX(100%);
     opacity: 0;
+    transform: translateY(10px);
   }
   to {
-    transform: translateX(0);
     opacity: 1;
-  }
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 0.3s ease-out;
-}
-
-/* Adding slide-up animation for bottom chat panel */
-@keyframes slide-up {
-  from {
-    transform: translateY(100%);
-    opacity: 0;
-  }
-  to {
     transform: translateY(0);
-    opacity: 1;
   }
 }
 
-.animate-slide-up {
-  animation: slide-up 0.3s ease-out;
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
 }
 
-/* Custom scrollbar for chat */
+.animate-reverse {
+  animation-direction: reverse;
+}
+
 .scrollbar-thin {
   scrollbar-width: thin;
 }
 
 .scrollbar-thumb-gray-600 {
-  scrollbar-color: rgb(75 85 99) transparent;
+  scrollbar-color: #4b5563 transparent;
 }
 
 .scrollbar-track-transparent {
-  scrollbar-color: rgb(75 85 99) transparent;
+  scrollbar-track-color: transparent;
 }
 
-/* Improve video aspect ratio during screen sharing */
-.aspect-video {
-  aspect-ratio: 16 / 9;
+/* Custom scrollbar for webkit browsers */
+::-webkit-scrollbar {
+  width: 6px;
 }
 
-/* Better hover effects for PiP videos */
-.group:hover .group-hover\:opacity-100 {
-  opacity: 1;
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
 }

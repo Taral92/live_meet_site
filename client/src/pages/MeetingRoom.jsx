@@ -18,9 +18,27 @@ import {
   Close,
   ScreenShare,
   StopScreenShare,
+  Subtitles,
+  Translate,
+  ExpandMore,
 } from "@mui/icons-material"
 
-const backendUrl = "https://live-meet-site.onrender.com"
+const backendUrl = "http://localhost:3000"
+
+const SUPPORTED_LANGUAGES = [
+  { code: "en", name: "English" },
+  { code: "es", name: "Spanish" },
+  { code: "fr", name: "French" },
+  { code: "de", name: "German" },
+  { code: "it", name: "Italian" },
+  { code: "pt", name: "Portuguese" },
+  { code: "ru", name: "Russian" },
+  { code: "ja", name: "Japanese" },
+  { code: "ko", name: "Korean" },
+  { code: "zh", name: "Chinese" },
+  { code: "ar", name: "Arabic" },
+  { code: "hi", name: "Hindi" },
+]
 
 const VideoPlayer = ({ stream, isMuted = false, isFlipped = false, label = "", className = "" }) => (
   <div
@@ -48,27 +66,104 @@ const VideoPlayer = ({ stream, isMuted = false, isFlipped = false, label = "", c
       </div>
     )}
     {!stream && (
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-gradient-to-br from-gray-800 to-gray-900">
-        <div className="relative mb-4">
-          <div className="w-16 h-16 border-4 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin"></div>
-          <div
-            className="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-purple-400/50 rounded-full animate-spin"
-            style={{ animationDirection: "reverse" }}
-          ></div>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6">
+        <div className="w-16 h-16 bg-gradient-to-r from-gray-700/50 to-gray-600/50 rounded-full flex items-center justify-center mb-4 shadow-lg">
+          <VideoCall className="w-8 h-8 text-gray-400" />
         </div>
-        <p className="text-gray-300 text-sm font-medium">Connecting...</p>
-        <div className="mt-2 flex items-center gap-2">
-          <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse"></div>
-          <div className="w-1 h-1 bg-purple-400 rounded-full animate-pulse" style={{ animationDelay: "0.2s" }}></div>
-          <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse" style={{ animationDelay: "0.4s" }}></div>
-        </div>
+        <p className="text-gray-400 font-medium mb-2">Camera Off</p>
+        <p className="text-gray-500 text-sm">Video is currently disabled</p>
       </div>
     )}
-    <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none"></div>
-
-    <div className="absolute top-0 right-0 w-8 h-8 bg-gradient-to-bl from-cyan-500/20 to-transparent rounded-bl-2xl"></div>
   </div>
 )
+
+const SubtitleDisplay = ({ subtitles, isVisible }) => {
+  if (!isVisible || !subtitles.length) return null
+
+  return (
+    <div className="fixed bottom-20 md:bottom-28 left-4 right-4 z-30 flex justify-center pointer-events-none">
+      <div className="max-w-4xl w-full">
+        <div className="bg-black/80 backdrop-blur-xl rounded-xl px-4 py-3 border border-gray-700/50 shadow-2xl">
+          <div className="space-y-1 max-h-20 overflow-hidden">
+            {subtitles.slice(-3).map((subtitle, index) => (
+              <div key={subtitle.id} className="flex items-start gap-3">
+                <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
+                  <div className="w-2 h-2 bg-cyan-400 rounded-full shadow-lg shadow-cyan-400/50"></div>
+                  <span className="text-cyan-400 text-sm font-medium truncate">{subtitle.speaker}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm leading-relaxed break-words">{subtitle.text}</p>
+                  {subtitle.confidence && subtitle.confidence < 0.6 && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <div className="w-1 h-1 bg-yellow-400 rounded-full"></div>
+                      <span className="text-yellow-400 text-xs">Low confidence</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const LanguageDropdown = ({ selectedLanguage, onLanguageChange, isOpen, onToggle }) => {
+  const dropdownRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        onToggle(false)
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [isOpen, onToggle])
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => onToggle(!isOpen)}
+        className="flex items-center gap-2 px-3 py-2 bg-gray-700/50 hover:bg-gray-600/50 border border-gray-600/30 rounded-lg text-white text-sm transition-colors duration-200"
+      >
+        <Translate className="w-4 h-4" />
+        <span>{SUPPORTED_LANGUAGES.find((lang) => lang.code === selectedLanguage)?.name || "English"}</span>
+        <ExpandMore className={`w-4 h-4 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute bottom-full mb-2 left-0 w-48 bg-gray-800/95 backdrop-blur-xl border border-gray-700/50 rounded-xl shadow-2xl max-h-64 overflow-y-auto z-50">
+          <div className="p-2">
+            {SUPPORTED_LANGUAGES.map((language) => (
+              <button
+                key={language.code}
+                onClick={() => {
+                  onLanguageChange(language.code)
+                  onToggle(false)
+                }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors duration-200 ${
+                  selectedLanguage === language.code
+                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                    : "text-gray-300 hover:bg-gray-700/50"
+                }`}
+              >
+                {language.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const ChatComponent = ({ chat, user, message, setMessage, handleSend, socketConnected, onClose }) => {
   const chatEndRef = useRef(null)
@@ -253,6 +348,9 @@ const MeetingRoom = () => {
   const remoteStreamRef = useRef(null)
   const remoteScreenStreamRef = useRef(null)
   const originalVideoTrackRef = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const audioChunksRef = useRef([])
+  const recordingIntervalRef = useRef(null)
 
   // States
   const [localStream, setLocalStream] = useState(null)
@@ -276,6 +374,31 @@ const MeetingRoom = () => {
 
   const [linkCopied, setLinkCopied] = useState(false)
 
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState(() => {
+    return localStorage.getItem("subtitlesEnabled") === "true"
+  })
+  const [translationEnabled, setTranslationEnabled] = useState(() => {
+    return localStorage.getItem("translationEnabled") === "true"
+  })
+  const [selectedLanguage, setSelectedLanguage] = useState(() => {
+    return localStorage.getItem("subtitleLanguage") || "en"
+  })
+  const [subtitles, setSubtitles] = useState([])
+  const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false)
+  const [subtitleError, setSubtitleError] = useState(null)
+
+  useEffect(() => {
+    localStorage.setItem("subtitlesEnabled", subtitlesEnabled.toString())
+  }, [subtitlesEnabled])
+
+  useEffect(() => {
+    localStorage.setItem("translationEnabled", translationEnabled.toString())
+  }, [translationEnabled])
+
+  useEffect(() => {
+    localStorage.setItem("subtitleLanguage", selectedLanguage)
+  }, [selectedLanguage])
+
   const copyMeetingLink = async () => {
     try {
       const meetingLink = `${window.location.origin}/meeting/${roomId}`
@@ -296,8 +419,107 @@ const MeetingRoom = () => {
     }
   }
 
+  const startSubtitleRecording = useCallback(() => {
+    if (!localStreamRef.current || !subtitlesEnabled) return
+
+    try {
+      // Create a new MediaRecorder for audio only
+      const audioStream = new MediaStream()
+      const audioTrack = localStreamRef.current.getAudioTracks()[0]
+      if (!audioTrack) return
+
+      audioStream.addTrack(audioTrack)
+
+      const mediaRecorder = new MediaRecorder(audioStream, {
+        mimeType: "audio/webm;codecs=opus",
+      })
+
+      mediaRecorderRef.current = mediaRecorder
+      audioChunksRef.current = []
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      mediaRecorder.onstop = () => {
+        if (audioChunksRef.current.length > 0) {
+          const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" })
+
+          // Only send if blob is substantial (> 1KB to avoid empty audio)
+          if (audioBlob.size > 1024) {
+            const reader = new FileReader()
+            reader.onload = () => {
+              const audioData = reader.result
+              socketRef.current?.emit("subtitle-request", {
+                roomId,
+                audioData,
+                translate: translationEnabled,
+                targetLanguage: selectedLanguage,
+                speaker: user?.username || user?.firstName || "Anonymous",
+              })
+            }
+            reader.readAsDataURL(audioBlob)
+          }
+        }
+        audioChunksRef.current = []
+      }
+
+      // Record in 3-second chunks for real-time processing
+      mediaRecorder.start()
+      recordingIntervalRef.current = setInterval(() => {
+        if (mediaRecorderRef.current?.state === "recording") {
+          mediaRecorderRef.current.stop()
+          mediaRecorderRef.current.start()
+        }
+      }, 3000)
+    } catch (err) {
+      console.error("Failed to start subtitle recording:", err)
+      setSubtitleError("Failed to start speech recognition")
+    }
+  }, [subtitlesEnabled, translationEnabled, selectedLanguage, roomId, user])
+
+  const stopSubtitleRecording = useCallback(() => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop()
+    }
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current)
+      recordingIntervalRef.current = null
+    }
+    mediaRecorderRef.current = null
+  }, [])
+
+  const toggleSubtitles = useCallback(() => {
+    const newState = !subtitlesEnabled
+    setSubtitlesEnabled(newState)
+    setSubtitleError(null)
+
+    if (newState) {
+      startSubtitleRecording()
+    } else {
+      stopSubtitleRecording()
+      setSubtitles([])
+    }
+  }, [subtitlesEnabled, startSubtitleRecording, stopSubtitleRecording])
+
+  useEffect(() => {
+    if (subtitlesEnabled && localStreamRef.current && socketConnected) {
+      startSubtitleRecording()
+    } else {
+      stopSubtitleRecording()
+    }
+
+    return () => {
+      stopSubtitleRecording()
+    }
+  }, [subtitlesEnabled, socketConnected, startSubtitleRecording, stopSubtitleRecording])
+
   const cleanup = useCallback(() => {
     console.log("Cleaning up resources...")
+
+    stopSubtitleRecording()
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop())
@@ -327,7 +549,8 @@ const MeetingRoom = () => {
     setIsConnected(false)
     setIsScreenSharing(false)
     setIsRemoteScreenSharing(false)
-  }, [])
+    setSubtitles([])
+  }, [stopSubtitleRecording])
 
   useEffect(() => {
     if (!isLoaded) return
@@ -356,6 +579,35 @@ const MeetingRoom = () => {
       console.log("❌ Socket disconnected:", reason)
       setSocketConnected(false)
       setIsConnected(false)
+    })
+
+    socketRef.current.on("subtitle-response", (data) => {
+      const { text, speaker, confidence, error: subtitleResponseError } = data
+
+      if (subtitleResponseError) {
+        console.error("Subtitle error:", subtitleResponseError)
+        setSubtitleError("Speech recognition temporarily unavailable")
+        return
+      }
+
+      if (text && text.trim()) {
+        const newSubtitle = {
+          id: Date.now() + Math.random(),
+          text: text.trim(),
+          speaker: speaker || "Unknown",
+          confidence,
+          timestamp: new Date(),
+        }
+
+        setSubtitles((prev) => {
+          const updated = [...prev, newSubtitle]
+          // Keep only last 10 subtitles for performance
+          return updated.slice(-10)
+        })
+
+        // Clear any previous errors
+        setSubtitleError(null)
+      }
     })
 
     return cleanup
@@ -923,7 +1175,7 @@ const MeetingRoom = () => {
                 className={`w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center transition-colors duration-200 ${
                   isAudioMuted
                     ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                    : "bg-gray-700/50 text-white border border-gray-600/30 hover:bg-gray-600/50" // Added hover without scale
+                    : "bg-gray-700/50 text-white border border-gray-600/30 hover:bg-gray-600/50"
                 }`}
               >
                 {isAudioMuted ? (
@@ -939,7 +1191,7 @@ const MeetingRoom = () => {
                 className={`w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center transition-colors duration-200 ${
                   isVideoMuted
                     ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                    : "bg-gray-700/50 text-white border border-gray-600/30 hover:bg-gray-600/50" // Added hover without scale
+                    : "bg-gray-700/50 text-white border border-gray-600/30 hover:bg-gray-600/50"
                 }`}
               >
                 {isVideoMuted ? (
@@ -956,7 +1208,7 @@ const MeetingRoom = () => {
                 className={`w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center transition-colors duration-200 ${
                   isScreenSharing
                     ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
-                    : "bg-gray-700/50 text-white border border-gray-600/30 hover:bg-gray-600/50" // Added hover without scale
+                    : "bg-gray-700/50 text-white border border-gray-600/30 hover:bg-gray-600/50"
                 } ${isScreenShareLoading ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 {isScreenShareLoading ? (
@@ -968,19 +1220,30 @@ const MeetingRoom = () => {
                 )}
               </button>
 
+              <button
+                onClick={toggleSubtitles}
+                className={`w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center transition-colors duration-200 ${
+                  subtitlesEnabled
+                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                    : "bg-gray-700/50 text-white border border-gray-600/30 hover:bg-gray-600/50"
+                }`}
+              >
+                <Subtitles className="w-5 h-5 md:w-6 md:h-6" />
+              </button>
+
               {/* Chat toggle */}
               <button
                 onClick={toggleChat}
                 className={`w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center transition-colors duration-200 relative ${
                   isChatOpen
                     ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
-                    : "bg-gray-700/50 text-white border border-gray-600/30 hover:bg-gray-600/50" // Added hover without scale
+                    : "bg-gray-700/50 text-white border border-gray-600/30 hover:bg-gray-600/50"
                 }`}
               >
                 <ChatBubble className="w-5 h-5 md:w-6 md:h-6" />
                 {unreadCount > 0 && !isChatOpen && (
                   <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                    {unreadCount > 9 ? "9+" : unreadCount} {/* Removed animate-pulse to prevent shaking */}
+                    {unreadCount > 9 ? "9+" : unreadCount}
                   </div>
                 )}
               </button>
@@ -988,12 +1251,44 @@ const MeetingRoom = () => {
               {/* Leave button */}
               <button
                 onClick={leaveMeeting}
-                className="w-12 h-12 md:w-14 md:h-14 bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl transition-colors duration-200 flex items-center justify-center ml-2 hover:bg-red-500/30" // Added hover without scale
+                className="w-12 h-12 md:w-14 md:h-14 bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl transition-colors duration-200 flex items-center justify-center ml-2 hover:bg-red-500/30"
               >
                 <CallEnd className="w-5 h-5 md:w-6 md:h-6" />
               </button>
             </div>
           </div>
+
+          {subtitlesEnabled && (
+            <div className="flex justify-center mt-3">
+              <div className="flex items-center gap-3 p-2 bg-gray-800/90 backdrop-blur-xl rounded-xl border border-gray-700/50 shadow-xl">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
+                  <span className="text-cyan-400 text-sm font-medium">Live Subtitles</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={translationEnabled}
+                      onChange={(e) => setTranslationEnabled(e.target.checked)}
+                      className="w-4 h-4 text-cyan-500 bg-gray-700 border-gray-600 rounded focus:ring-cyan-500 focus:ring-2"
+                    />
+                    Translate
+                  </label>
+
+                  {translationEnabled && (
+                    <LanguageDropdown
+                      selectedLanguage={selectedLanguage}
+                      onLanguageChange={setSelectedLanguage}
+                      isOpen={isLanguageDropdownOpen}
+                      onToggle={setIsLanguageDropdownOpen}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Mobile status indicators */}
           <div className="md:hidden flex justify-center mt-3 gap-4 text-xs">
@@ -1007,9 +1302,17 @@ const MeetingRoom = () => {
                 <span className="text-purple-400">{isScreenSharing ? "Sharing" : "Viewing"}</span>
               </div>
             )}
+            {subtitlesEnabled && (
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>
+                <span className="text-cyan-400">Subtitles</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      <SubtitleDisplay subtitles={subtitles} isVisible={subtitlesEnabled} />
 
       {/* Chat Component */}
       {isChatOpen && (
@@ -1030,9 +1333,22 @@ const MeetingRoom = () => {
           </div>
         </div>
       )}
+
+      {subtitleError && (
+        <div className="fixed bottom-6 right-4 md:right-6 max-w-md bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 text-yellow-400 text-sm z-50 backdrop-blur-xl">
+          <div className="flex justify-between items-start gap-3">
+            <p>{subtitleError}</p>
+            <button
+              onClick={() => setSubtitleError(null)}
+              className="text-yellow-400/70 hover:text-yellow-400 transition-colors"
+            >
+              <Close className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 export default MeetingRoom
-
