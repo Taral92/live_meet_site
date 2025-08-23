@@ -23,7 +23,7 @@ import {
   ExpandMore,
 } from "@mui/icons-material"
 
-const backendUrl = "http://localhost:3000"
+const backendUrl = "https://live-meet-site.onrender.com"
 
 const SUPPORTED_LANGUAGES = [
   { code: "en", name: "English" },
