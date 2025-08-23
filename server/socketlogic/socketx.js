@@ -12,7 +12,7 @@ const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
 
 const subtitleRateLimits = new Map()
 const RATE_LIMIT_WINDOW = 60 * 1000 // 1 minute
-const MAX_REQUESTS_PER_MINUTE = 20 // Allow 20 subtitle requests per minute per user
+const MAX_REQUESTS_PER_MINUTE = 60 // Allow 20 subtitle requests per minute per user
 
 function checkRateLimit(socketId) {
   const now = Date.now()

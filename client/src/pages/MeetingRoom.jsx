@@ -448,7 +448,7 @@ const MeetingRoom = () => {
           const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" })
 
           // Only send if blob is substantial (> 1KB to avoid empty audio)
-          if (audioBlob.size > 1024) {
+          if (audioBlob.size > 900) {
             const reader = new FileReader()
             reader.onload = () => {
               const audioData = reader.result
@@ -473,7 +473,7 @@ const MeetingRoom = () => {
           mediaRecorderRef.current.stop()
           mediaRecorderRef.current.start()
         }
-      }, 3000)
+      }, 1000)
     } catch (err) {
       console.error("Failed to start subtitle recording:", err)
       setSubtitleError("Failed to start speech recognition")
@@ -602,7 +602,7 @@ const MeetingRoom = () => {
         setSubtitles((prev) => {
           const updated = [...prev, newSubtitle]
           // Keep only last 10 subtitles for performance
-          return updated.slice(-10)
+          return updated.slice(-3)
         })
 
         // Clear any previous errors
