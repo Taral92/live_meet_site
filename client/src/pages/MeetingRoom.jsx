@@ -1,24 +1,19 @@
 "use client"
 
-import React from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
+import { Mic, MicOff, VideoOff, Send, ScreenShare } from "lucide-react"
+import { VideoCall, PlayArrow } from "@mui/icons-material"
 
-import { useEffect, useRef, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { io } from "socket.io-client"
 import { useUser } from "@clerk/clerk-react"
 import { UserButton } from "@clerk/clerk-react"
 import {
-  Mic,
-  MicOff,
   Videocam,
   VideocamOff,
-  Send,
-  PlayArrow,
-  VideoCall,
   ChatBubble,
   CallEnd,
   Close,
-  ScreenShare,
   StopScreenShare,
   Subtitles,
   Translate,
@@ -50,27 +45,31 @@ const SubtitleDisplay = React.memo(({ subtitles, isVisible }) => {
   if (!latestSubtitle) return null
 
   return (
-    <div className="fixed bottom-28 left-4 right-4 z-30 flex justify-center pointer-events-none">
-      <div className="max-w-2xl w-full">
-        <div className="bg-black/90 backdrop-blur-md rounded-lg px-3 py-2 border border-white/20 shadow-2xl">
+    <div className="fixed bottom-20 sm:bottom-28 left-2 right-2 sm:left-4 sm:right-4 z-30 flex justify-center pointer-events-none">
+      <div className="max-w-xs sm:max-w-2xl w-full">
+        <div className="bg-black/95 backdrop-blur-md rounded-lg px-2 py-1.5 sm:px-3 sm:py-2 border border-white/20 shadow-2xl">
           {/* Compact header */}
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+            <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-red-500 rounded-full animate-pulse"></div>
             <span className="text-red-400 text-xs font-medium">LIVE</span>
-            <span className="text-blue-300 text-xs font-medium">{latestSubtitle.speaker}</span>
+            <span className="text-blue-300 text-xs font-medium truncate max-w-20 sm:max-w-none">
+              {latestSubtitle.speaker}
+            </span>
             {latestSubtitle.confidence && (
-              <span className="text-green-400 text-xs">{Math.round(latestSubtitle.confidence * 100)}%</span>
+              <span className="text-green-400 text-xs hidden sm:inline">
+                {Math.round(latestSubtitle.confidence * 100)}%
+              </span>
             )}
           </div>
 
           {/* Latest subtitle content - compact and scrollable */}
-          <div className="max-h-16 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+          <div className="max-h-12 sm:max-h-16 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
             {/* Original text */}
-            <p className="text-white text-sm leading-relaxed mb-1">{latestSubtitle.text}</p>
+            <p className="text-white text-xs sm:text-sm leading-relaxed mb-1">{latestSubtitle.text}</p>
 
             {/* Translation if available */}
             {latestSubtitle.translatedText && latestSubtitle.translatedText !== latestSubtitle.text && (
-              <div className="bg-emerald-500/20 border border-emerald-400/30 rounded px-2 py-1 mt-1">
+              <div className="bg-emerald-500/20 border border-emerald-400/30 rounded px-1.5 py-0.5 sm:px-2 sm:py-1 mt-1">
                 <p className="text-emerald-100 text-xs leading-relaxed">{latestSubtitle.translatedText}</p>
               </div>
             )}
@@ -1012,8 +1011,11 @@ const MeetingRoom = () => {
           ></div>
         </div>
 
-        <div className="absolute top-8 right-8 z-10">
-          <UserButton />
+        {/* Header with user info */}
+        <div className="absolute top-4 sm:top-6 md:top-8 right-4 sm:right-6 md:right-8 z-10">
+          <div className="scale-125 sm:scale-100">
+            <UserButton />
+          </div>
         </div>
 
         <div className="w-full max-w-lg relative z-10">
@@ -1073,6 +1075,54 @@ const MeetingRoom = () => {
           className="absolute bottom-20 left-20 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl animate-pulse"
           style={{ animationDelay: "2s" }}
         ></div>
+      </div>
+
+      {/* Mobile Header - Always visible on mobile */}
+      <div className="md:hidden flex items-center justify-between p-4 bg-slate-800/40 backdrop-blur-2xl border-b border-slate-700/40 relative z-20">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/25">
+            <VideoCall className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-white font-bold text-lg tracking-tight">Meeting</h2>
+            <p className="text-slate-400 text-xs font-mono truncate max-w-[120px]">{roomId}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Copy Link Button - Mobile */}
+          <button
+            onClick={copyMeetingLink}
+            className="flex items-center justify-center w-10 h-10 bg-slate-700/60 hover:bg-slate-600/70 border border-slate-600/40 rounded-xl text-white transition-all duration-300 hover:border-indigo-400/40 relative"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
+            </svg>
+            {linkCopied && (
+              <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 px-3 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs whitespace-nowrap font-semibold animate-fadeIn">
+                Copied!
+              </div>
+            )}
+          </button>
+
+          {/* Connection Status - Mobile */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-slate-700/40 rounded-xl border border-slate-600/30">
+            <div
+              className={`w-2 h-2 rounded-full ${isConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400 animate-pulse"}`}
+            ></div>
+            <span className="text-xs text-slate-300 font-medium">{isConnected ? "Live" : "Wait"}</span>
+          </div>
+
+          {/* User Profile/Logout Button - Mobile */}
+          <div className="scale-110">
+            <UserButton />
+          </div>
+        </div>
       </div>
 
       {/* Header - Desktop only */}
@@ -1235,16 +1285,95 @@ const MeetingRoom = () => {
           </div>
         </div>
 
+        {/* Mobile Control Bar - Fixed at bottom */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-slate-900/95 backdrop-blur-2xl border-t border-slate-700/40 p-4">
+          <div className="flex items-center justify-center gap-3">
+            {/* Audio Toggle */}
+            <button
+              onClick={toggleAudio}
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                isAudioMuted
+                  ? "bg-slate-700/60 hover:bg-slate-600/70 text-white"
+                  : "bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30"
+              }`}
+            >
+              {isAudioMuted ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+            </button>
+
+            {/* Video Toggle */}
+            <button
+              onClick={toggleVideo}
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                isVideoMuted
+                  ? "bg-slate-700/60 hover:bg-slate-600/70 text-white"
+                  : "bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30"
+              }`}
+            >
+              {isVideoMuted ? <VideoCall className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+            </button>
+
+            {/* Screen Share */}
+            <button
+              onClick={toggleScreenShare}
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                isScreenSharing
+                  ? "bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30"
+                  : "bg-slate-700/60 hover:bg-slate-600/70 text-white"
+              }`}
+            >
+              <ScreenShare className="w-5 h-5" />
+            </button>
+
+            {/* Chat Toggle */}
+            <button
+              onClick={toggleChat}
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 relative ${
+                isChatOpen
+                  ? "bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 border border-indigo-500/30"
+                  : "bg-slate-700/60 hover:bg-slate-600/70 text-white"
+              }`}
+            >
+              <ChatBubble className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                  <span className="text-xs text-white font-bold">{unreadCount > 9 ? "9+" : unreadCount}</span>
+                </div>
+              )}
+            </button>
+
+            {/* Subtitles Toggle */}
+            <button
+              onClick={toggleSubtitles}
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                subtitlesEnabled
+                  ? "bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 border border-indigo-500/30"
+                  : "bg-slate-700/60 hover:bg-slate-600/70 text-white"
+              }`}
+            >
+              <Subtitles className="w-5 h-5" />
+            </button>
+
+            {/* Leave Button - Prominent */}
+            <button
+              onClick={leaveMeeting}
+              className="w-14 h-12 bg-red-500/20 hover:bg-red-500/30 border-2 border-red-500/40 hover:border-red-500/60 rounded-2xl flex items-center justify-center transition-all duration-300 ml-2"
+            >
+              <CallEnd className="w-6 h-6 text-red-400" />
+            </button>
+          </div>
+        </div>
+
         {/* Fixed control bar - always visible at bottom */}
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-2xl border-t border-slate-700/40 p-5 md:p-8">
+          {/* Control buttons */}
           <div className="flex justify-center">
-            <div className="flex items-center gap-4 md:gap-5 p-4 md:p-5 bg-slate-800/90 backdrop-blur-2xl rounded-2xl md:rounded-3xl border border-slate-700/40 shadow-2xl max-w-fit">
+            <div className="flex items-center gap-2 sm:gap-4 md:gap-5 p-3 sm:p-4 md:p-5 bg-slate-800/90 backdrop-blur-2xl rounded-xl sm:rounded-2xl md:rounded-3xl border border-slate-700/40 shadow-2xl max-w-fit overflow-x-auto">
               {/* Mobile copy link button */}
               <button
                 onClick={copyMeetingLink}
-                className="md:hidden w-14 h-14 rounded-2xl flex items-center justify-center bg-slate-700/50 text-white border border-slate-600/40 transition-all duration-300 relative hover:bg-slate-600/60 hover:scale-105"
+                className="md:hidden w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center bg-slate-700/50 text-white border border-slate-600/40 transition-all duration-300 relative hover:bg-slate-600/60 hover:scale-105 flex-shrink-0"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -1253,7 +1382,7 @@ const MeetingRoom = () => {
                   />
                 </svg>
                 {linkCopied && (
-                  <div className="absolute -top-14 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs whitespace-nowrap font-semibold animate-fadeIn">
+                  <div className="absolute -top-12 sm:-top-14 left-1/2 transform -translate-x-1/2 px-2 py-1 sm:px-3 sm:py-2 bg-emerald-500/20 border border-emerald-500/30 rounded-lg sm:rounded-xl text-emerald-400 text-xs whitespace-nowrap font-semibold animate-fadeIn">
                     Copied!
                   </div>
                 )}
@@ -1262,32 +1391,32 @@ const MeetingRoom = () => {
               {/* Audio toggle */}
               <button
                 onClick={toggleAudio}
-                className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 ${
+                className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 flex-shrink-0 ${
                   isAudioMuted
                     ? "bg-red-500/20 text-red-400 border border-red-500/30 shadow-lg shadow-red-500/20"
                     : "bg-slate-700/50 text-white border border-slate-600/40 hover:bg-slate-600/60 shadow-lg"
                 }`}
               >
                 {isAudioMuted ? (
-                  <MicOff className="w-6 h-6 md:w-7 md:h-7" />
+                  <MicOff className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
                 ) : (
-                  <Mic className="w-6 h-6 md:w-7 md:h-7" />
+                  <Mic className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
                 )}
               </button>
 
               {/* Video toggle */}
               <button
                 onClick={toggleVideo}
-                className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 ${
+                className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 flex-shrink-0 ${
                   isVideoMuted
                     ? "bg-red-500/20 text-red-400 border border-red-500/30 shadow-lg shadow-red-500/20"
                     : "bg-slate-700/50 text-white border border-slate-600/40 hover:bg-slate-600/60 shadow-lg"
                 }`}
               >
                 {isVideoMuted ? (
-                  <VideocamOff className="w-6 h-6 md:w-7 md:h-7" />
+                  <VideocamOff className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
                 ) : (
-                  <Videocam className="w-6 h-6 md:w-7 md:h-7" />
+                  <Videocam className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
                 )}
               </button>
 
@@ -1295,44 +1424,44 @@ const MeetingRoom = () => {
               <button
                 onClick={toggleScreenShare}
                 disabled={isScreenShareLoading}
-                className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 ${
+                className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 flex-shrink-0 ${
                   isScreenSharing
                     ? "bg-purple-500/20 text-purple-400 border border-purple-500/30 shadow-lg shadow-purple-500/20"
                     : "bg-slate-700/50 text-white border border-slate-600/40 hover:bg-slate-600/60 shadow-lg"
                 } ${isScreenShareLoading ? "opacity-50 cursor-not-allowed hover:scale-100" : ""}`}
               >
                 {isScreenShareLoading ? (
-                  <div className="w-6 h-6 md:w-7 md:h-7 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
                 ) : isScreenSharing ? (
-                  <StopScreenShare className="w-6 h-6 md:w-7 md:h-7" />
+                  <StopScreenShare className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
                 ) : (
-                  <ScreenShare className="w-6 h-6 md:w-7 md:h-7" />
+                  <ScreenShare className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
                 )}
               </button>
 
               <button
                 onClick={toggleSubtitles}
-                className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 ${
+                className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 flex-shrink-0 ${
                   subtitlesEnabled
                     ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shadow-lg shadow-indigo-500/20"
                     : "bg-slate-700/50 text-white border border-slate-600/40 hover:bg-slate-600/60 shadow-lg"
                 }`}
               >
-                <Subtitles className="w-6 h-6 md:w-7 md:h-7" />
+                <Subtitles className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
               </button>
 
               {/* Chat toggle */}
               <button
                 onClick={toggleChat}
-                className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 relative ${
+                className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:w-16 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 relative flex-shrink-0 ${
                   isChatOpen
                     ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shadow-lg shadow-indigo-500/20"
                     : "bg-slate-700/50 text-white border border-slate-600/40 hover:bg-slate-600/60 shadow-lg"
                 }`}
               >
-                <ChatBubble className="w-6 h-6 md:w-7 md:h-7" />
+                <ChatBubble className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7" />
                 {unreadCount > 0 && !isChatOpen && (
-                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg animate-bounce">
+                  <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-5 h-5 sm:w-6 sm:h-6 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg animate-bounce">
                     {unreadCount > 9 ? "9+" : unreadCount}
                   </div>
                 )}
@@ -1341,9 +1470,9 @@ const MeetingRoom = () => {
               {/* Leave button */}
               <button
                 onClick={leaveMeeting}
-                className="w-14 h-14 md:w-16 md:h-16 bg-red-500/20 text-red-400 border border-red-500/30 rounded-2xl transition-all duration-300 flex items-center justify-center ml-3 hover:bg-red-500/30 hover:scale-105 shadow-lg shadow-red-500/20"
+                className="w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 bg-red-500/20 text-red-400 border-2 border-red-500/50 rounded-xl sm:rounded-2xl transition-all duration-300 flex items-center justify-center ml-2 sm:ml-3 hover:bg-red-500/30 hover:scale-105 shadow-lg shadow-red-500/20 flex-shrink-0"
               >
-                <CallEnd className="w-6 h-6 md:w-7 md:h-7" />
+                <CallEnd className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />
               </button>
             </div>
           </div>
@@ -1400,6 +1529,13 @@ const MeetingRoom = () => {
                 <span className="text-indigo-400 font-medium">Subtitles</span>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Header with user info */}
+        <div className="flex items-center justify-between p-4 sm:p-6 md:p-8">
+          <div className="scale-125 sm:scale-100">
+            <UserButton />
           </div>
         </div>
       </div>
