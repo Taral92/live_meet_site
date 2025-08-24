@@ -1,26 +1,31 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useCallback } from "react"
-import { Mic, MicOff, VideoOff, Send, ScreenShare } from "lucide-react"
-import { VideoCall, PlayArrow } from "@mui/icons-material"
+import React from "react"
 
+import { useEffect, useRef, useState, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { io } from "socket.io-client"
 import { useUser } from "@clerk/clerk-react"
 import { UserButton } from "@clerk/clerk-react"
 import {
+  Mic,
+  MicOff,
   Videocam,
   VideocamOff,
+  Send,
+  PlayArrow,
+  VideoCall,
   ChatBubble,
   CallEnd,
   Close,
+  ScreenShare,
   StopScreenShare,
   Subtitles,
   Translate,
   ExpandMore,
 } from "@mui/icons-material"
 
-const backendUrl = "https://live-meet-site.onrender.com"
+const backendUrl = "http://localhost:3000"
 
 const SUPPORTED_LANGUAGES = [
   { code: "en", name: "English" },
@@ -1077,54 +1082,6 @@ const MeetingRoom = () => {
         ></div>
       </div>
 
-      {/* Mobile Header - Always visible on mobile */}
-      <div className="md:hidden flex items-center justify-between p-4 bg-slate-800/40 backdrop-blur-2xl border-b border-slate-700/40 relative z-20">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/25">
-            <VideoCall className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h2 className="text-white font-bold text-lg tracking-tight">Meeting</h2>
-            <p className="text-slate-400 text-xs font-mono truncate max-w-[120px]">{roomId}</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Copy Link Button - Mobile */}
-          <button
-            onClick={copyMeetingLink}
-            className="flex items-center justify-center w-10 h-10 bg-slate-700/60 hover:bg-slate-600/70 border border-slate-600/40 rounded-xl text-white transition-all duration-300 hover:border-indigo-400/40 relative"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-              />
-            </svg>
-            {linkCopied && (
-              <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 px-3 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs whitespace-nowrap font-semibold animate-fadeIn">
-                Copied!
-              </div>
-            )}
-          </button>
-
-          {/* Connection Status - Mobile */}
-          <div className="flex items-center gap-2 px-3 py-2 bg-slate-700/40 rounded-xl border border-slate-600/30">
-            <div
-              className={`w-2 h-2 rounded-full ${isConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400 animate-pulse"}`}
-            ></div>
-            <span className="text-xs text-slate-300 font-medium">{isConnected ? "Live" : "Wait"}</span>
-          </div>
-
-          {/* User Profile/Logout Button - Mobile */}
-          <div className="scale-110">
-            <UserButton />
-          </div>
-        </div>
-      </div>
-
       {/* Header - Desktop only */}
       <div className="hidden md:flex items-center justify-between p-6 bg-slate-800/30 backdrop-blur-2xl border-b border-slate-700/40 relative z-10">
         <div className="flex items-center gap-5">
@@ -1285,84 +1242,6 @@ const MeetingRoom = () => {
           </div>
         </div>
 
-        {/* Mobile Control Bar - Fixed at bottom */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-slate-900/95 backdrop-blur-2xl border-t border-slate-700/40 p-4">
-          <div className="flex items-center justify-center gap-3">
-            {/* Audio Toggle */}
-            <button
-              onClick={toggleAudio}
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${
-                isAudioMuted
-                  ? "bg-slate-700/60 hover:bg-slate-600/70 text-white"
-                  : "bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30"
-              }`}
-            >
-              {isAudioMuted ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
-            </button>
-
-            {/* Video Toggle */}
-            <button
-              onClick={toggleVideo}
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${
-                isVideoMuted
-                  ? "bg-slate-700/60 hover:bg-slate-600/70 text-white"
-                  : "bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30"
-              }`}
-            >
-              {isVideoMuted ? <VideoCall className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
-            </button>
-
-            {/* Screen Share */}
-            <button
-              onClick={toggleScreenShare}
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${
-                isScreenSharing
-                  ? "bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30"
-                  : "bg-slate-700/60 hover:bg-slate-600/70 text-white"
-              }`}
-            >
-              <ScreenShare className="w-5 h-5" />
-            </button>
-
-            {/* Chat Toggle */}
-            <button
-              onClick={toggleChat}
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 relative ${
-                isChatOpen
-                  ? "bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 border border-indigo-500/30"
-                  : "bg-slate-700/60 hover:bg-slate-600/70 text-white"
-              }`}
-            >
-              <ChatBubble className="w-5 h-5" />
-              {unreadCount > 0 && (
-                <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
-                  <span className="text-xs text-white font-bold">{unreadCount > 9 ? "9+" : unreadCount}</span>
-                </div>
-              )}
-            </button>
-
-            {/* Subtitles Toggle */}
-            <button
-              onClick={toggleSubtitles}
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 ${
-                subtitlesEnabled
-                  ? "bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 border border-indigo-500/30"
-                  : "bg-slate-700/60 hover:bg-slate-600/70 text-white"
-              }`}
-            >
-              <Subtitles className="w-5 h-5" />
-            </button>
-
-            {/* Leave Button - Prominent */}
-            <button
-              onClick={leaveMeeting}
-              className="w-14 h-12 bg-red-500/20 hover:bg-red-500/30 border-2 border-red-500/40 hover:border-red-500/60 rounded-2xl flex items-center justify-center transition-all duration-300 ml-2"
-            >
-              <CallEnd className="w-6 h-6 text-red-400" />
-            </button>
-          </div>
-        </div>
-
         {/* Fixed control bar - always visible at bottom */}
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-2xl border-t border-slate-700/40 p-5 md:p-8">
           {/* Control buttons */}
@@ -1373,7 +1252,7 @@ const MeetingRoom = () => {
                 onClick={copyMeetingLink}
                 className="md:hidden w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center bg-slate-700/50 text-white border border-slate-600/40 transition-all duration-300 relative hover:bg-slate-600/60 hover:scale-105 flex-shrink-0"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -1453,7 +1332,7 @@ const MeetingRoom = () => {
               {/* Chat toggle */}
               <button
                 onClick={toggleChat}
-                className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:w-16 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 relative flex-shrink-0 ${
+                className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-105 relative flex-shrink-0 ${
                   isChatOpen
                     ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shadow-lg shadow-indigo-500/20"
                     : "bg-slate-700/50 text-white border border-slate-600/40 hover:bg-slate-600/60 shadow-lg"
