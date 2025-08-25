@@ -22,7 +22,7 @@ const subtitleRateLimits = new Map();
 const bannedPhrases = [
   "thank you", "bye", "oh", "yeah", "peace", "right", "thanks", "hello", "hi",
   "sorry", "goodbye", "bye.", "right.", "sure", "fine", "what", "how",
-  "subs by www.zeoranger.co.uk"
+  "subs by www.zeoranger.co.uk","you","um"
 ];
 
 // --- UTILITIES ---

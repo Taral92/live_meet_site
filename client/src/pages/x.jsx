@@ -1,12 +1,12 @@
-"use client";
+"use client"
 
-import React from "react";
+import React from "react"
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { io } from "socket.io-client";
-import { useUser } from "@clerk/clerk-react";
-import { UserButton } from "@clerk/clerk-react";
+import { useEffect, useRef, useState, useCallback } from "react"
+import { useParams, useNavigate } from "react-router-dom"
+import { io } from "socket.io-client"
+import { useUser } from "@clerk/clerk-react"
+import { UserButton } from "@clerk/clerk-react"
 import {
   Mic,
   MicOff,
@@ -23,10 +23,10 @@ import {
   Subtitles,
   Translate,
   ExpandMore,
-} from "@mui/icons-material";
-import TranslateWordModal from "./TranslateWordModal";
+} from "@mui/icons-material"
+import TranslateWordModal from "./TranslateWordModal"
 
-const backendUrl = "https://live-meet-site.onrender.com";
+const backendUrl = "https://live-meet-site.onrender.com"
 
 const SUPPORTED_LANGUAGES = [
   { code: "en", name: "English" },
@@ -41,18 +41,17 @@ const SUPPORTED_LANGUAGES = [
   { code: "zh", name: "Chinese" },
   { code: "ar", name: "Arabic" },
   { code: "hi", name: "Hindi" },
-];
+]
 
 const SubtitleDisplay = React.memo(({ subtitles, isVisible }) => {
-  if (!isVisible || !subtitles.length) return null;
+  if (!isVisible || !subtitles.length) return null
 
   // Get only the latest subtitle
-  const latestSubtitle = subtitles[subtitles.length - 1];
-  if (!latestSubtitle) return null;
+  const latestSubtitle = subtitles[subtitles.length - 1]
+  if (!latestSubtitle) return null
 
   return (
-    <div className="fixed left-2 right-2 z-30 flex justify-center pointer-events-none bottom-56 sm:bottom-64 md:bottom-72">
-
+    <div className="fixed bottom-20 sm:bottom-28 left-2 right-2 sm:left-4 sm:right-4 z-30 flex justify-center pointer-events-none">
       <div className="max-w-xs sm:max-w-2xl w-full">
         <div className="bg-black/95 backdrop-blur-md rounded-lg px-2 py-1.5 sm:px-3 sm:py-2 border border-white/20 shadow-2xl">
           {/* Compact header */}
@@ -72,79 +71,67 @@ const SubtitleDisplay = React.memo(({ subtitles, isVisible }) => {
           {/* Latest subtitle content - compact and scrollable */}
           <div className="max-h-12 sm:max-h-16 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
             {/* Original text */}
-            <p className="text-white text-xs sm:text-sm leading-relaxed mb-1">
-              {latestSubtitle.text}
-            </p>
+            <p className="text-white text-xs sm:text-sm leading-relaxed mb-1">{latestSubtitle.text}</p>
 
             {/* Translation if available */}
-            {latestSubtitle.translatedText &&
-              latestSubtitle.translatedText !== latestSubtitle.text && (
-                <div className="bg-emerald-500/20 border border-emerald-400/30 rounded px-1.5 py-0.5 sm:px-2 sm:py-1 mt-1">
-                  <p className="text-emerald-100 text-xs leading-relaxed">
-                    {latestSubtitle.translatedText}
-                  </p>
-                </div>
-              )}
+            {latestSubtitle.translatedText && latestSubtitle.translatedText !== latestSubtitle.text && (
+              <div className="bg-emerald-500/20 border border-emerald-400/30 rounded px-1.5 py-0.5 sm:px-2 sm:py-1 mt-1">
+                <p className="text-emerald-100 text-xs leading-relaxed">{latestSubtitle.translatedText}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
-  );
-});
+  )
+})
 
-const VideoPlayer = React.memo(
-  ({ stream, isLocal = false, isMuted = false, label }) => {
-    const videoRef = useRef(null);
+const VideoPlayer = React.memo(({ stream, isLocal = false, isMuted = false, label }) => {
+  const videoRef = useRef(null)
 
-    useEffect(() => {
-      if (videoRef.current && stream) {
-        videoRef.current.srcObject = stream;
-      }
-    }, [stream]);
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream
+    }
+  }, [stream])
 
-    return (
-      <div className="relative aspect-video w-full bg-black rounded-2xl overflow-hidden border border-slate-700/40">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted={isMuted}
-          className="w-full h-full object-contain"
-          style={{ transform: isLocal ? "scaleX(-1)" : "none" }}
-        />
-        {label && (
-          <div className="absolute bottom-3 left-3 px-2 py-1 bg-black/95  backdrop-blur-sm rounded-lg text-white text-sm font-medium">
-            {label}
-          </div>
-        )}
-      </div>
-    );
-  }
-);
+  return (
+    <div className="relative w-full h-full bg-slate-900 rounded-2xl overflow-hidden border border-slate-700/40">
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted={isMuted}
+        className="w-full h-full object-cover"
+        style={{ transform: isLocal ? "scaleX(-1)" : "none" }}
+      />
+      {label && (
+        <div className="absolute bottom-3 left-3 px-2 py-1 bg-black/95  backdrop-blur-sm rounded-lg text-white text-sm font-medium">
+          {label}
+        </div>
+      )}
+    </div>
+  )
+})
 
-const LanguageDropdown = ({
-  selectedLanguage,
-  onLanguageChange,
-  isOpen,
-  onToggle,
-}) => {
-  const dropdownRef = useRef(null);
+const LanguageDropdown = ({ selectedLanguage, onLanguageChange, isOpen, onToggle }) => {
+  const dropdownRef = useRef(null)
 
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        onToggle(false);
+        onToggle(false)
       }
-    };
+    }
 
     if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside)
     }
 
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isOpen, onToggle]);
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [isOpen, onToggle])
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -154,12 +141,9 @@ const LanguageDropdown = ({
       >
         <Translate className="w-4 h-4 text-indigo-400" />
         <span className="font-medium">
-          {SUPPORTED_LANGUAGES.find((lang) => lang.code === selectedLanguage)
-            ?.name || "English"}
+          {SUPPORTED_LANGUAGES.find((lang) => lang.code === selectedLanguage)?.name || "English"}
         </span>
-        <ExpandMore
-          className={`w-4 h-4 transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`}
-        />
+        <ExpandMore className={`w-4 h-4 transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
       {isOpen && (
@@ -169,8 +153,8 @@ const LanguageDropdown = ({
               <button
                 key={language.code}
                 onClick={() => {
-                  onLanguageChange(language.code);
-                  onToggle(false);
+                  onLanguageChange(language.code)
+                  onToggle(false)
                 }}
                 className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all duration-300 ${
                   selectedLanguage === language.code
@@ -185,30 +169,22 @@ const LanguageDropdown = ({
         </div>
       )}
     </div>
-  );
-};
+  )
+}
 
-const ChatComponent = ({
-  chat,
-  user,
-  message,
-  setMessage,
-  handleSend,
-  socketConnected,
-  onClose,
-}) => {
-  const chatEndRef = useRef(null);
+const ChatComponent = ({ chat, user, message, setMessage, handleSend, socketConnected, onClose }) => {
+  const chatEndRef = useRef(null)
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+      e.preventDefault()
+      handleSend()
     }
-  };
+  }
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat]);
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [chat])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-2xl animate-fadeIn">
@@ -221,12 +197,8 @@ const ChatComponent = ({
               <ChatBubble className="w-7 h-7 md:w-8 md:h-8 text-white" />
             </div>
             <div>
-              <h3 className="text-white font-bold text-xl md:text-2xl tracking-tight">
-                Meeting Chat
-              </h3>
-              <p className="text-slate-400 text-sm font-medium">
-                Real-time messaging
-              </p>
+              <h3 className="text-white font-bold text-xl md:text-2xl tracking-tight">Meeting Chat</h3>
+              <p className="text-slate-400 text-sm font-medium">Real-time messaging</p>
             </div>
           </div>
           <div className="flex items-center gap-5">
@@ -254,9 +226,7 @@ const ChatComponent = ({
               <div className="w-24 h-24 md:w-28 md:h-28 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-3xl flex items-center justify-center mb-8 shadow-2xl backdrop-blur-sm border border-slate-600/30">
                 <ChatBubble className="w-12 h-12 md:w-14 md:h-14 text-slate-400" />
               </div>
-              <h4 className="text-white font-bold text-xl md:text-2xl mb-3 tracking-tight">
-                No messages yet
-              </h4>
+              <h4 className="text-white font-bold text-xl md:text-2xl mb-3 tracking-tight">No messages yet</h4>
               <p className="text-slate-400 text-base md:text-lg mb-6 leading-relaxed">
                 Start the conversation with your participants
               </p>
@@ -268,9 +238,7 @@ const ChatComponent = ({
           ) : (
             <>
               {chat.map((msg, idx) => {
-                const isOwnMessage =
-                  msg.username ===
-                  (user?.username || user?.firstName || "Anonymous");
+                const isOwnMessage = msg.username === (user?.username || user?.firstName || "Anonymous")
                 return (
                   <div
                     key={msg.id || idx}
@@ -278,13 +246,9 @@ const ChatComponent = ({
                   >
                     <div className="flex items-center gap-3 mb-3 px-2">
                       <div className="w-8 h-8 bg-gradient-to-br from-slate-600 to-slate-700 rounded-full flex items-center justify-center shadow-lg">
-                        <span className="text-sm font-bold text-white">
-                          {msg.username.charAt(0).toUpperCase()}
-                        </span>
+                        <span className="text-sm font-bold text-white">{msg.username.charAt(0).toUpperCase()}</span>
                       </div>
-                      <span className="text-sm font-semibold text-slate-300">
-                        {msg.username}
-                      </span>
+                      <span className="text-sm font-semibold text-slate-300">{msg.username}</span>
                       <span className="text-xs text-slate-500 font-medium">
                         {new Date(msg.timestamp).toLocaleTimeString([], {
                           hour: "2-digit",
@@ -304,9 +268,7 @@ const ChatComponent = ({
                                   />
                                 </svg>
                               </div>
-                              <span className="text-xs text-indigo-400 font-medium">
-                                Seen
-                              </span>
+                              <span className="text-xs text-indigo-400 font-medium">Seen</span>
                             </div>
                           ) : (
                             <div className="flex items-center gap-2">
@@ -319,9 +281,7 @@ const ChatComponent = ({
                                   />
                                 </svg>
                               </div>
-                              <span className="text-xs text-slate-500 font-medium">
-                                Sent
-                              </span>
+                              <span className="text-xs text-slate-500 font-medium">Sent</span>
                             </div>
                           )}
                         </div>
@@ -334,12 +294,10 @@ const ChatComponent = ({
                           : "bg-slate-800/80 text-slate-100 border border-slate-700/40 shadow-slate-900/50"
                       }`}
                     >
-                      <p className="text-sm md:text-base break-words leading-relaxed font-medium">
-                        {msg.message}
-                      </p>
+                      <p className="text-sm md:text-base break-words leading-relaxed font-medium">{msg.message}</p>
                     </div>
                   </div>
-                );
+                )
               })}
               <div ref={chatEndRef} />
             </>
@@ -379,291 +337,273 @@ const ChatComponent = ({
             </button>
           </div>
           <div className="flex items-center justify-between mt-4 text-xs text-slate-500">
-            <span className="font-medium">
-              Press Enter to send • Shift+Enter for new line
-            </span>
+            <span className="font-medium">Press Enter to send • Shift+Enter for new line</span>
             <div className="flex items-center gap-3">
               <div
                 className={`w-2.5 h-2.5 rounded-full ${socketConnected ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`}
               ></div>
-              <span className="font-medium">
-                {socketConnected ? "Connected" : "Disconnected"}
-              </span>
+              <span className="font-medium">{socketConnected ? "Connected" : "Disconnected"}</span>
             </div>
           </div>
         </div>
       </div>
     </div>
-  );
-};
+  )
+}
 
 const MeetingRoom = () => {
-  const { roomId } = useParams();
-  const { user, isLoaded } = useUser();
-  const navigate = useNavigate();
+  const { roomId } = useParams()
+  const { user, isLoaded } = useUser()
+  const navigate = useNavigate()
 
   // Refs
-  const socketRef = useRef(null);
-  const peerConnectionRef = useRef(null);
-  const localStreamRef = useRef(null);
-  const localScreenStreamRef = useRef(null);
-  const remoteStreamRef = useRef(null);
-  const remoteScreenStreamRef = useRef(null);
-  const originalVideoTrackRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
-  const recordingIntervalRef = useRef(null);
+  const socketRef = useRef(null)
+  const peerConnectionRef = useRef(null)
+  const localStreamRef = useRef(null)
+  const localScreenStreamRef = useRef(null)
+  const remoteStreamRef = useRef(null)
+  const remoteScreenStreamRef = useRef(null)
+  const originalVideoTrackRef = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const audioChunksRef = useRef([])
+  const recordingIntervalRef = useRef(null)
 
   // States
-  const [localStream, setLocalStream] = useState(null);
-  const [remoteStream, setRemoteStream] = useState(null);
-  const [isStarted, setIsStarted] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [socketConnected, setSocketConnected] = useState(false);
-  const [error, setError] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [localStream, setLocalStream] = useState(null)
+  const [remoteStream, setRemoteStream] = useState(null)
+  const [isStarted, setIsStarted] = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
+  const [socketConnected, setSocketConnected] = useState(false)
+  const [error, setError] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const [chat, setChat] = useState([]);
-  const [message, setMessage] = useState("");
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [chat, setChat] = useState([])
+  const [message, setMessage] = useState("")
+  const [isChatOpen, setIsChatOpen] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
 
-  const [isAudioMuted, setIsAudioMuted] = useState(false);
-  const [isVideoMuted, setIsVideoMuted] = useState(false);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [isRemoteScreenSharing, setIsRemoteScreenSharing] = useState(false);
-  const [isScreenShareLoading, setIsScreenShareLoading] = useState(false);
+  const [isAudioMuted, setIsAudioMuted] = useState(false)
+  const [isVideoMuted, setIsVideoMuted] = useState(false)
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [isRemoteScreenSharing, setIsRemoteScreenSharing] = useState(false)
+  const [isScreenShareLoading, setIsScreenShareLoading] = useState(false)
 
-  const [linkCopied, setLinkCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false)
 
-  const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
-  const [translationEnabled, setTranslationEnabled] = useState(false);
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState(false)
+  const [translationEnabled, setTranslationEnabled] = useState(false)
   const [selectedLanguage, setSelectedLanguage] = useState(() => {
-    return localStorage.getItem("subtitleLanguage") || "en";
-  });
-  const [subtitles, setSubtitles] = useState([]);
-  const [pendingSubtitle, setPendingSubtitle] = useState(null);
-  const pendingTimerRef = useRef(null);
-  const SUBTITLE_MERGE_DELAY = 800;
+    return localStorage.getItem("subtitleLanguage") || "en"
+  })
+  const [subtitles, setSubtitles] = useState([])
+  const [pendingSubtitle, setPendingSubtitle] = useState(null)
+  const pendingTimerRef = useRef(null)
+  const SUBTITLE_MERGE_DELAY = 800
 
-  const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
-  const [subtitleError, setSubtitleError] = useState(null);
-  const [showTranslate, setShowTranslate] = useState(false);
-
-  useEffect(() => {
-    localStorage.setItem("subtitlesEnabled", subtitlesEnabled.toString());
-  }, [subtitlesEnabled]);
+  const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false)
+  const [subtitleError, setSubtitleError] = useState(null)
+  const [showTranslate, setShowTranslate] = useState(false)
 
   useEffect(() => {
-    localStorage.setItem("translationEnabled", translationEnabled.toString());
-  }, [translationEnabled]);
+    localStorage.setItem("subtitlesEnabled", subtitlesEnabled.toString())
+  }, [subtitlesEnabled])
 
   useEffect(() => {
-    localStorage.setItem("subtitleLanguage", selectedLanguage);
-  }, [selectedLanguage]);
+    localStorage.setItem("translationEnabled", translationEnabled.toString())
+  }, [translationEnabled])
+
+  useEffect(() => {
+    localStorage.setItem("subtitleLanguage", selectedLanguage)
+  }, [selectedLanguage])
 
   const copyMeetingLink = async () => {
     try {
-      const meetingLink = `${window.location.origin}/meeting/${roomId}`;
-      await navigator.clipboard.writeText(meetingLink);
-      setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 2000);
+      const meetingLink = `${window.location.origin}/meeting/${roomId}`
+      await navigator.clipboard.writeText(meetingLink)
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2000)
     } catch (err) {
-      console.error("Failed to copy link:", err);
+      console.error("Failed to copy link:", err)
       // Fallback for older browsers
-      const textArea = document.createElement("textarea");
-      textArea.value = `${window.location.origin}/meeting/${roomId}`;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textArea);
-      setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 2000);
+      const textArea = document.createElement("textarea")
+      textArea.value = `${window.location.origin}/meeting/${roomId}`
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand("copy")
+      document.body.removeChild(textArea)
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2000)
     }
-  };
+  }
 
   const startSubtitleRecording = useCallback(() => {
-    if (!localStreamRef.current || !subtitlesEnabled) return;
+    if (!localStreamRef.current || !subtitlesEnabled) return
 
     try {
       // Create a new MediaRecorder for audio only
-      const audioStream = new MediaStream();
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (!audioTrack) return;
+      const audioStream = new MediaStream()
+      const audioTrack = localStreamRef.current.getAudioTracks()[0]
+      if (!audioTrack) return
 
-      audioStream.addTrack(audioTrack);
+      audioStream.addTrack(audioTrack)
 
       const mediaRecorder = new MediaRecorder(audioStream, {
         mimeType: "audio/webm;codecs=opus",
-      });
+      })
 
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+      mediaRecorderRef.current = mediaRecorder
+      audioChunksRef.current = []
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+          audioChunksRef.current.push(event.data)
         }
-      };
+      }
 
       mediaRecorder.onstop = () => {
         if (audioChunksRef.current.length > 0) {
           const audioBlob = new Blob(audioChunksRef.current, {
             type: "audio/webm",
-          });
+          })
 
           // Only send if blob is substantial (> 1KB to avoid empty audio)
           if (audioBlob.size > 1024) {
-            const reader = new FileReader();
+            const reader = new FileReader()
             reader.onload = () => {
-              const audioData = reader.result;
+              const audioData = reader.result
               socketRef.current?.emit("subtitle-request", {
                 roomId,
                 audioData,
                 translate: translationEnabled,
                 targetLanguage: selectedLanguage,
                 speaker: user?.username || user?.firstName || "Anonymous",
-              });
-            };
-            reader.readAsDataURL(audioBlob);
+              })
+            }
+            reader.readAsDataURL(audioBlob)
           }
         }
-        audioChunksRef.current = [];
-      };
+        audioChunksRef.current = []
+      }
 
-      mediaRecorder.start();
+      mediaRecorder.start()
       recordingIntervalRef.current = setInterval(() => {
         if (mediaRecorderRef.current?.state === "recording") {
-          mediaRecorderRef.current.stop();
-          mediaRecorderRef.current.start();
+          mediaRecorderRef.current.stop()
+          mediaRecorderRef.current.start()
         }
-      }, 1000);
+      }, 1000)
     } catch (err) {
-      console.error("Failed to start subtitle recording:", err);
-      setSubtitleError("Failed to start speech recognition");
+      console.error("Failed to start subtitle recording:", err)
+      setSubtitleError("Failed to start speech recognition")
     }
-  }, [subtitlesEnabled, translationEnabled, selectedLanguage, roomId, user]);
+  }, [subtitlesEnabled, translationEnabled, selectedLanguage, roomId, user])
 
   const stopSubtitleRecording = useCallback(() => {
     if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stop()
     }
     if (recordingIntervalRef.current) {
-      clearInterval(recordingIntervalRef.current);
-      recordingIntervalRef.current = null;
+      clearInterval(recordingIntervalRef.current)
+      recordingIntervalRef.current = null
     }
-    mediaRecorderRef.current = null;
-  }, []);
+    mediaRecorderRef.current = null
+  }, [])
 
   const toggleSubtitles = useCallback(() => {
-    const newState = !subtitlesEnabled;
-    setSubtitlesEnabled(newState);
-    setSubtitleError(null);
+    const newState = !subtitlesEnabled
+    setSubtitlesEnabled(newState)
+    setSubtitleError(null)
 
     if (newState) {
-      startSubtitleRecording();
+      startSubtitleRecording()
     } else {
-      stopSubtitleRecording();
-      setSubtitles([]);
+      stopSubtitleRecording()
+      setSubtitles([])
     }
-  }, [subtitlesEnabled, startSubtitleRecording, stopSubtitleRecording]);
+  }, [subtitlesEnabled, startSubtitleRecording, stopSubtitleRecording])
 
   useEffect(() => {
     if (subtitlesEnabled && localStreamRef.current && socketConnected) {
-      startSubtitleRecording();
+      startSubtitleRecording()
     } else {
-      stopSubtitleRecording();
+      stopSubtitleRecording()
     }
 
     return () => {
-      stopSubtitleRecording();
-    };
-  }, [
-    subtitlesEnabled,
-    socketConnected,
-    startSubtitleRecording,
-    stopSubtitleRecording,
-  ]);
+      stopSubtitleRecording()
+    }
+  }, [subtitlesEnabled, socketConnected, startSubtitleRecording, stopSubtitleRecording])
 
   const cleanup = useCallback(() => {
-    console.log("Cleaning up resources...");
+    console.log("Cleaning up resources...")
 
-    stopSubtitleRecording();
+    stopSubtitleRecording()
 
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
+      localStreamRef.current.getTracks().forEach((track) => track.stop())
+      localStreamRef.current = null
     }
 
     if (localScreenStreamRef.current) {
-      localScreenStreamRef.current.getTracks().forEach((track) => track.stop());
-      localScreenStreamRef.current = null;
+      localScreenStreamRef.current.getTracks().forEach((track) => track.stop())
+      localScreenStreamRef.current = null
     }
 
     if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
+      peerConnectionRef.current.close()
+      peerConnectionRef.current = null
     }
 
     if (socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
+      socketRef.current.disconnect()
+      socketRef.current = null
     }
 
-    remoteStreamRef.current = null;
-    remoteScreenStreamRef.current = null;
-    originalVideoTrackRef.current = null;
-    setLocalStream(null);
-    setRemoteStream(null);
-    setIsConnected(false);
-    setIsScreenSharing(false);
-    setIsRemoteScreenSharing(false);
-    setSubtitles([]);
-  }, [stopSubtitleRecording]);
+    remoteStreamRef.current = null
+    remoteScreenStreamRef.current = null
+    originalVideoTrackRef.current = null
+    setLocalStream(null)
+    setRemoteStream(null)
+    setIsConnected(false)
+    setIsScreenSharing(false)
+    setIsRemoteScreenSharing(false)
+    setSubtitles([])
+  }, [stopSubtitleRecording])
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded) return
 
     socketRef.current = io(backendUrl, {
       reconnectionAttempts: 5,
       timeout: 10000,
       forceNew: true,
-    });
+    })
 
     socketRef.current.on("connect", () => {
-      console.log("✅ Socket connected:", socketRef.current.id);
-      setSocketConnected(true);
-      setIsLoading(false);
-      setError(null);
-    });
+      console.log("✅ Socket connected:", socketRef.current.id)
+      setSocketConnected(true)
+      setIsLoading(false)
+      setError(null)
+    })
 
     socketRef.current.on("connect_error", (err) => {
-      console.error("❌ Socket connection error:", err);
-      setError(
-        `Server connection failed. Make sure server is running on ${backendUrl}`
-      );
-      setIsLoading(false);
-      setSocketConnected(false);
-    });
+      console.error("❌ Socket connection error:", err)
+      setError(`Server connection failed. Make sure server is running on ${backendUrl}`)
+      setIsLoading(false)
+      setSocketConnected(false)
+    })
 
     socketRef.current.on("disconnect", (reason) => {
-      console.log("❌ Socket disconnected:", reason);
-      setSocketConnected(false);
-      setIsConnected(false);
-    });
+      console.log("❌ Socket disconnected:", reason)
+      setSocketConnected(false)
+      setIsConnected(false)
+    })
 
     socketRef.current.on("subtitle-response", (data) => {
-      const {
-        id,
-        text,
-        speaker,
-        confidence,
-        translated,
-        error: subtitleResponseError,
-      } = data;
+      const { id, text, speaker, confidence, translated, error: subtitleResponseError } = data
 
       if (subtitleResponseError || !text || !text.trim()) {
-        return;
+        return
       }
 
       if (!translated) {
@@ -675,12 +615,12 @@ const MeetingRoom = () => {
           timestamp: new Date(),
           translatedText: null,
           translated: false,
-        };
+        }
 
         setSubtitles((prevSubtitles) => {
-          const updated = [...prevSubtitles, newSubtitle].slice(-15);
-          return updated;
-        });
+          const updated = [...prevSubtitles, newSubtitle].slice(-15)
+          return updated
+        })
       } else {
         setSubtitles((prevSubtitles) =>
           prevSubtitles.map((sub) =>
@@ -691,84 +631,26 @@ const MeetingRoom = () => {
                   translated: true,
                   confidence: confidence || sub.confidence,
                 }
-              : sub
-          )
-        );
+              : sub,
+          ),
+        )
       }
-    });
+    })
 
-    const signalingHandlers = {
-      "user-joined": async ({ socketId }) => {
-        const pc = createPeerConnection(socketId);
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socketRef.current.emit("offer", { offer, target: socketId }, roomId);
-      },
-      offer: async ({ offer, from }) => {
-        const pc = createPeerConnection(from);
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socketRef.current.emit("answer", { answer, target: from }, roomId);
-      },
-      answer: async ({ answer }) => {
-        if (peerConnectionRef.current)
-          await peerConnectionRef.current.setRemoteDescription(
-            new RTCSessionDescription(answer)
-          );
-      },
-      "ice-candidate": async ({ candidate }) => {
-        if (peerConnectionRef.current && candidate)
-          await peerConnectionRef.current.addIceCandidate(
-            new RTCIceCandidate(candidate)
-          );
-      },
-      "user-left": handleUserLeft,
-      "peer-screen-share-start": () => {
-        console.log("Participant started screen sharing");
-        setIsRemoteScreenSharing(true);
-      },
-      "peer-screen-share-stop": () => {
-        console.log(
-          "Participant stopped screen sharing - returning to normal video call"
-        );
-        setIsRemoteScreenSharing(false);
-        // Clear any remote screen stream references
-        remoteScreenStreamRef.current = null;
-      },
-      "chat-message": (data) => {
-        setChat((prev) => [
-          ...prev,
-          { ...data, seen: false, id: Date.now() + Math.random() },
-        ]);
-        const currentUsername =
-          user?.username || user?.firstName || "Anonymous";
-        if (!isChatOpen && data.username !== currentUsername) {
-          setUnreadCount((prev) => prev + 1);
-        }
-      },
-    };
-
-    return () => {
-      if (socketRef.current) {
-        Object.keys(signalingHandlers).forEach((event) =>
-          socketRef.current.off(event)
-        );
-      }
-    };
-  }, [isLoaded, cleanup]);
+    return cleanup
+  }, [isLoaded, cleanup])
   useEffect(() => {
     if (!subtitlesEnabled && pendingTimerRef.current) {
-      clearTimeout(pendingTimerRef.current);
-      setPendingSubtitle(null);
+      clearTimeout(pendingTimerRef.current)
+      setPendingSubtitle(null)
     }
-  }, [subtitlesEnabled]);
+  }, [subtitlesEnabled])
 
-  const subtitleList = subtitles.slice(-8); // Show last 8 subtitles
+  const subtitleList = subtitles.slice(-8) // Show last 8 subtitles
 
   const startMeeting = async () => {
-    setError(null);
-    setIsLoading(true);
+    setError(null)
+    setIsLoading(true)
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -782,226 +664,189 @@ const MeetingRoom = () => {
           noiseSuppression: true,
           autoGainControl: true,
         },
-      });
+      })
 
-      localStreamRef.current = stream;
-      originalVideoTrackRef.current = stream.getVideoTracks()[0];
-      setLocalStream(stream);
-      setIsStarted(true);
+      localStreamRef.current = stream
+      originalVideoTrackRef.current = stream.getVideoTracks()[0]
+      setLocalStream(stream)
+      setIsStarted(true)
 
       if (socketRef.current?.connected) {
-        socketRef.current.emit("join-meeting", roomId);
+        socketRef.current.emit("join-meeting", roomId)
       }
     } catch (err) {
-      console.error("❌ Failed to get media devices:", err);
-      let errorMessage = "Could not access camera/microphone. ";
-      if (err.name === "NotAllowedError")
-        errorMessage += "Please allow camera and microphone permissions.";
-      else if (err.name === "NotFoundError")
-        errorMessage += " No camera or microphone found.";
-      else errorMessage += err.message;
-      setError(errorMessage);
+      console.error("❌ Failed to get media devices:", err)
+      let errorMessage = "Could not access camera/microphone. "
+      if (err.name === "NotAllowedError") errorMessage += "Please allow camera and microphone permissions."
+      else if (err.name === "NotFoundError") errorMessage += "No camera or microphone found."
+      else errorMessage += err.message
+      setError(errorMessage)
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   const handleUserLeft = useCallback(() => {
-    console.log("👋 Remote user left the meeting");
+    console.log("👋 Remote user left the meeting")
     if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
+      peerConnectionRef.current.close()
+      peerConnectionRef.current = null
     }
-    remoteStreamRef.current = null;
-    remoteScreenStreamRef.current = null;
-    setRemoteStream(null);
-    setIsConnected(false);
-    setIsRemoteScreenSharing(false);
-  }, []);
+    remoteStreamRef.current = null
+    remoteScreenStreamRef.current = null
+    setRemoteStream(null)
+    setIsConnected(false)
+    setIsRemoteScreenSharing(false)
+  }, [])
 
   const createPeerConnection = useCallback(
     (targetSocketId) => {
-      if (peerConnectionRef.current) peerConnectionRef.current.close();
+      if (peerConnectionRef.current) peerConnectionRef.current.close()
 
       const pc = new RTCPeerConnection({
         iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-      });
+      })
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          socketRef.current.emit(
-            "ice-candidate",
-            { candidate: event.candidate, target: targetSocketId },
-            roomId
-          );
+          socketRef.current.emit("ice-candidate", { candidate: event.candidate, target: targetSocketId }, roomId)
         }
-      };
+      }
 
       pc.ontrack = (event) => {
-        const stream = event.streams[0];
+        const stream = event.streams[0]
         if (event.track.kind === "video") {
           const isScreenTrack =
-            event.track.getSettings().displaySurface ||
-            event.track.label.toLowerCase().includes("screen");
+            event.track.getSettings().displaySurface || event.track.label.toLowerCase().includes("screen")
           if (isScreenTrack) {
-            remoteScreenStreamRef.current = stream;
-            setIsRemoteScreenSharing(true);
+            remoteScreenStreamRef.current = stream
+            setIsRemoteScreenSharing(true)
           } else {
-            remoteStreamRef.current = stream;
-            setRemoteStream(stream);
+            remoteStreamRef.current = stream
+            setRemoteStream(stream)
           }
         } else if (event.track.kind === "audio") {
-          if (!remoteStreamRef.current)
-            remoteStreamRef.current = new MediaStream();
-          remoteStreamRef.current
-            .getAudioTracks()
-            .forEach((track) => remoteStreamRef.current.removeTrack(track));
-          remoteStreamRef.current.addTrack(event.track);
-          setRemoteStream(new MediaStream(remoteStreamRef.current.getTracks()));
+          if (!remoteStreamRef.current) remoteStreamRef.current = new MediaStream()
+          remoteStreamRef.current.getAudioTracks().forEach((track) => remoteStreamRef.current.removeTrack(track))
+          remoteStreamRef.current.addTrack(event.track)
+          setRemoteStream(new MediaStream(remoteStreamRef.current.getTracks()))
         }
-      };
+      }
 
       pc.oniceconnectionstatechange = () => {
-        const state = pc.iceConnectionState;
-        if (state === "connected" || state === "completed")
-          setIsConnected(true);
-        else if (["disconnected", "failed", "closed"].includes(state))
-          handleUserLeft();
-      };
+        const state = pc.iceConnectionState
+        if (state === "connected" || state === "completed") setIsConnected(true)
+        else if (["disconnected", "failed", "closed"].includes(state)) handleUserLeft()
+      }
 
-      localStreamRef.current
-        .getTracks()
-        .forEach((track) => pc.addTrack(track, localStreamRef.current));
-      peerConnectionRef.current = pc;
-      return pc;
+      localStreamRef.current.getTracks().forEach((track) => pc.addTrack(track, localStreamRef.current))
+      peerConnectionRef.current = pc
+      return pc
     },
-    [handleUserLeft, roomId]
-  );
+    [handleUserLeft, roomId],
+  )
 
   useEffect(() => {
-    if (!isStarted || !socketConnected || !socketRef.current) return;
+    if (!isStarted || !socketConnected || !socketRef.current) return
 
-    const socket = socketRef.current;
+    const socket = socketRef.current
 
     const signalingHandlers = {
       "user-joined": async ({ socketId }) => {
-        const pc = createPeerConnection(socketId);
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socket.emit("offer", { offer, target: socketId }, roomId);
+        const pc = createPeerConnection(socketId)
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+        socket.emit("offer", { offer, target: socketId }, roomId)
       },
       offer: async ({ offer, from }) => {
-        const pc = createPeerConnection(from);
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit("answer", { answer, target: from }, roomId);
+        const pc = createPeerConnection(from)
+        await pc.setRemoteDescription(new RTCSessionDescription(offer))
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        socket.emit("answer", { answer, target: from }, roomId)
       },
       answer: async ({ answer }) => {
         if (peerConnectionRef.current)
-          await peerConnectionRef.current.setRemoteDescription(
-            new RTCSessionDescription(answer)
-          );
+          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer))
       },
       "ice-candidate": async ({ candidate }) => {
         if (peerConnectionRef.current && candidate)
-          await peerConnectionRef.current.addIceCandidate(
-            new RTCIceCandidate(candidate)
-          );
+          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
       },
       "user-left": handleUserLeft,
       "peer-screen-share-start": () => {
-        console.log("Participant started screen sharing");
-        setIsRemoteScreenSharing(true);
+        console.log("Participant started screen sharing")
+        setIsRemoteScreenSharing(true)
       },
       "peer-screen-share-stop": () => {
-        console.log(
-          "Participant stopped screen sharing - returning to normal video call"
-        );
-        setIsRemoteScreenSharing(false);
+        console.log("Participant stopped screen sharing - returning to normal video call")
+        setIsRemoteScreenSharing(false)
         // Clear any remote screen stream references
-        remoteScreenStreamRef.current = null;
+        remoteScreenStreamRef.current = null
       },
       "chat-message": (data) => {
-        setChat((prev) => [
-          ...prev,
-          { ...data, seen: false, id: Date.now() + Math.random() },
-        ]);
-        const currentUsername =
-          user?.username || user?.firstName || "Anonymous";
+        setChat((prev) => [...prev, { ...data, seen: false, id: Date.now() + Math.random() }])
+        const currentUsername = user?.username || user?.firstName || "Anonymous"
         if (!isChatOpen && data.username !== currentUsername) {
-          setUnreadCount((prev) => prev + 1);
+          setUnreadCount((prev) => prev + 1)
         }
       },
-    };
+    }
 
-    Object.entries(signalingHandlers).forEach(([event, handler]) =>
-      socket.on(event, handler)
-    );
+    Object.entries(signalingHandlers).forEach(([event, handler]) => socket.on(event, handler))
 
-    return () =>
-      Object.keys(signalingHandlers).forEach((event) => socket.off(event));
-  }, [
-    isStarted,
-    socketConnected,
-    roomId,
-    createPeerConnection,
-    handleUserLeft,
-    isChatOpen,
-    user,
-  ]);
+    return () => {
+      if (socket && socket.off) {
+        Object.keys(signalingHandlers).forEach((event) => socket.off(event))
+      }
+    }
+  }, [isStarted, socketConnected, roomId, createPeerConnection, handleUserLeft, isChatOpen, user])
 
   const toggleAudio = () => {
-    if (!localStreamRef.current) return;
+    if (!localStreamRef.current) return
     localStreamRef.current.getAudioTracks().forEach((track) => {
-      track.enabled = !track.enabled;
-      setIsAudioMuted(!track.enabled);
-    });
-  };
+      track.enabled = !track.enabled
+      setIsAudioMuted(!track.enabled)
+    })
+  }
 
   const toggleVideo = () => {
-    if (!localStreamRef.current) return;
+    if (!localStreamRef.current) return
     localStreamRef.current.getVideoTracks().forEach((track) => {
-      track.enabled = !track.enabled;
-      setIsVideoMuted(!track.enabled);
-    });
-  };
+      track.enabled = !track.enabled
+      setIsVideoMuted(!track.enabled)
+    })
+  }
 
   const toggleScreenShare = async () => {
-    if (isScreenShareLoading) return;
-    setIsScreenShareLoading(true);
-    setError(null);
+    if (isScreenShareLoading) return
+    setIsScreenShareLoading(true)
+    setError(null)
 
-    const videoSender = peerConnectionRef.current
-      ?.getSenders()
-      .find((s) => s.track?.kind === "video");
-    const audioSender = peerConnectionRef.current
-      ?.getSenders()
-      .find((s) => s.track?.kind === "audio");
+    const videoSender = peerConnectionRef.current?.getSenders().find((s) => s.track?.kind === "video")
+    const audioSender = peerConnectionRef.current?.getSenders().find((s) => s.track?.kind === "audio")
 
     try {
       if (isScreenSharing) {
         if (localScreenStreamRef.current) {
-          localScreenStreamRef.current
-            .getTracks()
-            .forEach((track) => track.stop());
-          localScreenStreamRef.current = null;
+          localScreenStreamRef.current.getTracks().forEach((track) => track.stop())
+          localScreenStreamRef.current = null
         }
 
         // Restore original video track
         if (videoSender && originalVideoTrackRef.current) {
-          await videoSender.replaceTrack(originalVideoTrackRef.current);
+          await videoSender.replaceTrack(originalVideoTrackRef.current)
         }
 
         // Restore original audio track
-        const originalAudioTrack = localStreamRef.current?.getAudioTracks()[0];
+        const originalAudioTrack = localStreamRef.current?.getAudioTracks()[0]
         if (audioSender && originalAudioTrack) {
-          await audioSender.replaceTrack(originalAudioTrack);
+          await audioSender.replaceTrack(originalAudioTrack)
         }
 
-        setIsScreenSharing(false);
-        socketRef.current?.emit("screen-share-stop", roomId);
-        console.log("Screen sharing stopped - notified participants");
+        setIsScreenSharing(false)
+        socketRef.current?.emit("screen-share-stop", roomId)
+        console.log("Screen sharing stopped - notified participants")
       } else {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: {
@@ -1014,174 +859,154 @@ const MeetingRoom = () => {
             autoGainControl: false,
             sampleRate: 48000, // Better audio quality for system sounds
           },
-        });
+        })
 
-        const screenVideoTrack = screenStream.getVideoTracks()[0];
-        const screenAudioTrack = screenStream.getAudioTracks()[0];
+        const screenVideoTrack = screenStream.getVideoTracks()[0]
+        const screenAudioTrack = screenStream.getAudioTracks()[0]
 
-        if (!screenVideoTrack) throw new Error("No screen video track found.");
+        if (!screenVideoTrack) throw new Error("No screen video track found.")
 
         // Store original video track if not already stored
         if (!originalVideoTrackRef.current && localStreamRef.current) {
-          originalVideoTrackRef.current =
-            localStreamRef.current.getVideoTracks()[0];
+          originalVideoTrackRef.current = localStreamRef.current.getVideoTracks()[0]
         }
 
         // Replace video track with screen
-        if (videoSender) await videoSender.replaceTrack(screenVideoTrack);
+        if (videoSender) await videoSender.replaceTrack(screenVideoTrack)
 
         if (screenAudioTrack && audioSender) {
           // Create audio context for mixing system audio with microphone
-          const audioContext = new AudioContext();
-          const destination = audioContext.createMediaStreamDestination();
+          const audioContext = new AudioContext()
+          const destination = audioContext.createMediaStreamDestination()
 
           // Add screen audio
-          const screenAudioSource =
-            audioContext.createMediaStreamSource(screenStream);
-          screenAudioSource.connect(destination);
+          const screenAudioSource = audioContext.createMediaStreamSource(screenStream)
+          screenAudioSource.connect(destination)
 
           // Add microphone audio if available
           if (localStreamRef.current?.getAudioTracks()[0]) {
-            const micAudioSource = audioContext.createMediaStreamSource(
-              localStreamRef.current
-            );
-            const micGain = audioContext.createGain();
-            micGain.gain.value = 0.7; // Reduce mic volume slightly when screen sharing
-            micAudioSource.connect(micGain);
-            micGain.connect(destination);
+            const micAudioSource = audioContext.createMediaStreamSource(localStreamRef.current)
+            const micGain = audioContext.createGain()
+            micGain.gain.value = 0.7 // Reduce mic volume slightly when screen sharing
+            micAudioSource.connect(micGain)
+            micGain.connect(destination)
           }
 
-          const mixedAudioTrack = destination.stream.getAudioTracks()[0];
-          await audioSender.replaceTrack(mixedAudioTrack);
-          console.log(
-            "Mixed audio track created for system sound + microphone"
-          );
+          const mixedAudioTrack = destination.stream.getAudioTracks()[0]
+          await audioSender.replaceTrack(mixedAudioTrack)
+          console.log("Mixed audio track created for system sound + microphone")
         }
 
         screenVideoTrack.onended = () => {
-          console.log("Screen share ended by user - cleaning up");
+          console.log("Screen share ended by user - cleaning up")
           if (isScreenSharing) {
-            setIsScreenSharing(false);
+            setIsScreenSharing(false)
 
             // Clean up screen stream
             if (localScreenStreamRef.current) {
-              localScreenStreamRef.current
-                .getTracks()
-                .forEach((track) => track.stop());
-              localScreenStreamRef.current = null;
+              localScreenStreamRef.current.getTracks().forEach((track) => track.stop())
+              localScreenStreamRef.current = null
             }
 
             // Restore original tracks
             if (videoSender && originalVideoTrackRef.current) {
-              videoSender
-                .replaceTrack(originalVideoTrackRef.current)
-                .catch(console.error);
+              videoSender.replaceTrack(originalVideoTrackRef.current).catch(console.error)
             }
             if (audioSender && localStreamRef.current?.getAudioTracks()[0]) {
-              audioSender
-                .replaceTrack(localStreamRef.current.getAudioTracks()[0])
-                .catch(console.error);
+              audioSender.replaceTrack(localStreamRef.current.getAudioTracks()[0]).catch(console.error)
             }
 
-            socketRef.current?.emit("screen-share-stop", roomId);
+            socketRef.current?.emit("screen-share-stop", roomId)
           }
-        };
+        }
 
-        localScreenStreamRef.current = screenStream;
-        setIsScreenSharing(true);
-        socketRef.current?.emit("screen-share-start", roomId);
-        console.log("Screen sharing started - notified participants");
+        localScreenStreamRef.current = screenStream
+        setIsScreenSharing(true)
+        socketRef.current?.emit("screen-share-start", roomId)
+        console.log("Screen sharing started - notified participants")
       }
     } catch (err) {
-      console.error("Screen sharing error:", err);
-      setError(
-        "Could not start screen sharing. Please grant permission and try again."
-      );
+      console.error("Screen sharing error:", err)
+      setError("Could not start screen sharing. Please grant permission and try again.")
 
       if (localScreenStreamRef.current) {
-        localScreenStreamRef.current
-          .getTracks()
-          .forEach((track) => track.stop());
-        localScreenStreamRef.current = null;
+        localScreenStreamRef.current.getTracks().forEach((track) => track.stop())
+        localScreenStreamRef.current = null
       }
 
-      setIsScreenSharing(false);
-      socketRef.current?.emit("screen-share-stop", roomId);
+      setIsScreenSharing(false)
+      socketRef.current?.emit("screen-share-stop", roomId)
     } finally {
-      setIsScreenShareLoading(false);
+      setIsScreenShareLoading(false)
     }
-  };
+  }
 
   const handleSend = () => {
-    if (!message.trim() || !socketConnected) return;
+    if (!message.trim() || !socketConnected) return
     const msgData = {
       roomId,
       message: message.trim(),
       username: user?.username || user?.firstName || "Anonymous",
-    };
-    socketRef.current.emit("chat-message", msgData);
-    setMessage("");
-  };
+    }
+    socketRef.current.emit("chat-message", msgData)
+    setMessage("")
+  }
 
   const leaveMeeting = () => {
     try {
       if (socketRef.current?.connected) {
-        socketRef.current.emit("leave-room", roomId);
+        socketRef.current.emit("leave-room", roomId)
       }
-      cleanup();
-      navigate("/");
+      cleanup()
+      navigate("/")
     } catch (error) {
-      console.error("Error leaving meeting:", error);
-      navigate("/");
+      console.error("Error leaving meeting:", error)
+      navigate("/")
     }
-  };
+  }
 
   const toggleChat = () => {
     if (!isChatOpen) {
-      setChat((prev) => prev.map((msg) => ({ ...msg, seen: true })));
-      setUnreadCount(0);
+      setChat((prev) => prev.map((msg) => ({ ...msg, seen: true })))
+      setUnreadCount(0)
     }
-    setIsChatOpen(!isChatOpen);
-  };
+    setIsChatOpen(!isChatOpen)
+  }
 
   const mainViewStream = isScreenSharing
     ? localScreenStreamRef.current
     : isRemoteScreenSharing
       ? remoteScreenStreamRef.current || remoteStream
-      : remoteStream;
-  const mainViewLabel = isScreenSharing
-    ? "Your Screen"
-    : isRemoteScreenSharing
-      ? "Participant's Screen"
-      : "Participant";
+      : remoteStream
+  const mainViewLabel = isScreenSharing ? "Your Screen" : isRemoteScreenSharing ? "Participant's Screen" : "Participant"
 
-  const pipViews = [];
+  const pipViews = []
   if (isScreenSharing) {
     pipViews.push({
       stream: localStreamRef.current,
       label: "You (Camera)",
       isFlipped: true,
       isMuted: true,
-    });
+    })
     if (remoteStream)
       pipViews.push({
         stream: remoteStream,
         label: "Participant",
         isMuted: false,
-      });
+      })
   } else if (isRemoteScreenSharing) {
     pipViews.push({
       stream: localStream,
       label: "You",
       isFlipped: true,
       isMuted: true,
-    });
+    })
     if (remoteStream)
       pipViews.push({
         stream: remoteStream,
         label: "Participant (Camera)",
         isMuted: true,
-      });
+      })
   }
 
   // Pre-meeting join screen
@@ -1211,9 +1036,7 @@ const MeetingRoom = () => {
                 <div className="absolute inset-0 border-4 border-indigo-500/30 border-t-indigo-400 rounded-full animate-spin"></div>
                 <div className="absolute inset-2 border-4 border-transparent border-t-purple-400/50 rounded-full animate-spin animate-reverse"></div>
               </div>
-              <p className="text-slate-300 text-lg font-medium">
-                Connecting to server...
-              </p>
+              <p className="text-slate-300 text-lg font-medium">Connecting to server...</p>
             </div>
           )}
 
@@ -1229,9 +1052,7 @@ const MeetingRoom = () => {
                 <div className="w-24 h-24 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-indigo-500/25 transition-transform duration-500 hover:scale-110">
                   <VideoCall className="w-12 h-12 text-white" />
                 </div>
-                <h1 className="text-4xl font-bold text-white mb-4 tracking-tight">
-                  Join Meeting
-                </h1>
+                <h1 className="text-4xl font-bold text-white mb-4 tracking-tight">Join Meeting</h1>
                 <div className="flex items-center justify-center gap-3 text-slate-400">
                   <span className="text-lg font-medium">Room:</span>
                   <span className="px-4 py-2 bg-slate-700/50 rounded-xl text-indigo-300 font-mono text-base font-semibold border border-slate-600/30">
@@ -1252,7 +1073,7 @@ const MeetingRoom = () => {
           )}
         </div>
       </div>
-    );
+    )
   }
 
   // Main meeting interface
@@ -1275,12 +1096,8 @@ const MeetingRoom = () => {
               <VideoCall className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h2 className="text-white font-bold text-xl tracking-tight">
-                Meeting Room
-              </h2>
-              <p className="text-slate-400 text-sm font-mono font-medium">
-                {roomId}
-              </p>
+              <h2 className="text-white font-bold text-xl tracking-tight">Meeting Room</h2>
+              <p className="text-slate-400 text-sm font-mono font-medium">{roomId}</p>
             </div>
           </div>
           <div className="flex items-center gap-5">
@@ -1288,12 +1105,7 @@ const MeetingRoom = () => {
               onClick={copyMeetingLink}
               className="flex items-center gap-3 px-5 py-3 bg-slate-700/50 hover:bg-slate-600/60 border border-slate-600/40 rounded-2xl text-white transition-all duration-300 hover:border-indigo-400/40 hover:shadow-lg hover:shadow-indigo-500/10 relative"
             >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -1313,9 +1125,7 @@ const MeetingRoom = () => {
               <div
                 className={`w-3 h-3 rounded-full ${isConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400 animate-pulse"}`}
               ></div>
-              <span className="text-sm text-slate-300 font-semibold">
-                {isConnected ? "Connected" : "Waiting..."}
-              </span>
+              <span className="text-sm text-slate-300 font-semibold">{isConnected ? "Connected" : "Waiting..."}</span>
             </div>
             {(isScreenSharing || isRemoteScreenSharing) && (
               <div className="flex items-center gap-3 px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-2xl">
@@ -1339,20 +1149,14 @@ const MeetingRoom = () => {
                   <div className="flex gap-3 md:gap-6 h-full transition-all duration-500">
                     {/* Main screen share area */}
                     <div className="flex-1 bg-black rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl transition-all duration-300">
-                      <VideoPlayer
-                        stream={mainViewStream}
-                        label={mainViewLabel}
-                        className="w-full h-full"
-                      />
+                      <VideoPlayer stream={mainViewStream} label={mainViewLabel} className="w-full h-full" />
                     </div>
 
                     <div className="w-52 md:w-72 lg:w-96 flex flex-col gap-3 md:gap-4 transition-all duration-500">
                       <div className="flex-1 bg-gradient-to-br from-slate-800/60 to-slate-900/60 rounded-2xl md:rounded-3xl p-4 md:p-6 backdrop-blur-2xl border border-slate-700/40 shadow-2xl">
                         <div className="flex items-center gap-3 mb-4 md:mb-6">
                           <div className="w-4 h-4 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full shadow-lg shadow-indigo-400/60 animate-pulse"></div>
-                          <span className="text-white text-sm md:text-base font-bold tracking-wide">
-                            Participants
-                          </span>
+                          <span className="text-white text-sm md:text-base font-bold tracking-wide">Participants</span>
                           <div className="ml-auto px-3 py-1 bg-slate-700/50 rounded-full text-xs text-slate-300 font-semibold border border-slate-600/30">
                             {remoteStream ? "2" : "1"}
                           </div>
@@ -1410,12 +1214,8 @@ const MeetingRoom = () => {
                       <div className="px-4 md:px-5 py-3 bg-red-500/20 border border-red-500/30 rounded-xl md:rounded-2xl text-red-400 text-xs md:text-sm backdrop-blur-2xl shadow-xl transition-all duration-300 animate-slideIn">
                         <div className="flex items-center gap-3">
                           <div className="w-2.5 h-2.5 bg-red-400 rounded-full shadow-lg shadow-red-400/60 animate-pulse"></div>
-                          <span className="hidden sm:inline font-semibold">
-                            You are sharing your screen
-                          </span>
-                          <span className="sm:hidden font-semibold">
-                            Sharing
-                          </span>
+                          <span className="hidden sm:inline font-semibold">You are sharing your screen</span>
+                          <span className="sm:hidden font-semibold">Sharing</span>
                         </div>
                       </div>
                     )}
@@ -1423,12 +1223,8 @@ const MeetingRoom = () => {
                       <div className="px-4 md:px-5 py-3 bg-purple-500/20 border border-purple-500/30 rounded-xl md:rounded-2xl text-purple-400 text-xs md:text-sm backdrop-blur-2xl shadow-xl transition-all duration-300 animate-slideIn">
                         <div className="flex items-center gap-3">
                           <div className="w-2.5 h-2.5 bg-purple-400 rounded-full shadow-lg shadow-purple-400/60 animate-pulse"></div>
-                          <span className="hidden sm:inline font-semibold">
-                            Viewing shared screen
-                          </span>
-                          <span className="sm:hidden font-semibold">
-                            Viewing
-                          </span>
+                          <span className="hidden sm:inline font-semibold">Viewing shared screen</span>
+                          <span className="sm:hidden font-semibold">Viewing</span>
                         </div>
                       </div>
                     )}
@@ -1442,12 +1238,7 @@ const MeetingRoom = () => {
                     <div className="absolute top-4 left-4 z-10 px-3 py-1.5 bg-indigo-500/20 border border-indigo-500/30 rounded-xl text-indigo-300 text-xs font-semibold backdrop-blur-xl">
                       Your Camera (Mirror)
                     </div>
-                    <VideoPlayer
-                      stream={localStreamRef.current || localStream}
-                      isMuted
-                      isFlipped
-                      label=""
-                    />
+                    <VideoPlayer stream={localStreamRef.current || localStream} isMuted isFlipped label="" />
                   </div>
 
                   {/* Participant view */}
@@ -1472,12 +1263,7 @@ const MeetingRoom = () => {
                   onClick={copyMeetingLink}
                   className="md:hidden w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center bg-slate-700/50 text-white border border-slate-600/40 transition-all duration-300 relative hover:bg-slate-600/60 hover:scale-105 flex-shrink-0"
                 >
-                  <svg
-                    className="w-5 h-5 sm:w-6 sm:h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -1593,9 +1379,7 @@ const MeetingRoom = () => {
                 <div className="flex items-center gap-4 p-3 bg-slate-800/90 backdrop-blur-2xl rounded-2xl border border-slate-700/40 shadow-xl">
                   <div className="flex items-center gap-3">
                     <div className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-pulse shadow-lg shadow-indigo-400/60"></div>
-                    <span className="text-indigo-300 text-sm font-bold">
-                      Live Subtitles
-                    </span>
+                    <span className="text-indigo-300 text-sm font-bold">Live Subtitles</span>
                   </div>
 
                   <div className="flex items-center gap-3">
@@ -1603,9 +1387,7 @@ const MeetingRoom = () => {
                       <input
                         type="checkbox"
                         checked={translationEnabled}
-                        onChange={(e) =>
-                          setTranslationEnabled(e.target.checked)
-                        }
+                        onChange={(e) => setTranslationEnabled(e.target.checked)}
                         className="w-4 h-4 text-indigo-500 bg-slate-700 border-slate-600 rounded focus:ring-indigo-500 focus:ring-2"
                       />
                       Translate
@@ -1630,16 +1412,12 @@ const MeetingRoom = () => {
                 <div
                   className={`w-2.5 h-2.5 rounded-full ${isConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400 animate-pulse"}`}
                 ></div>
-                <span className="text-slate-300 font-medium">
-                  {isConnected ? "Connected" : "Waiting..."}
-                </span>
+                <span className="text-slate-300 font-medium">{isConnected ? "Connected" : "Waiting..."}</span>
               </div>
               {(isScreenSharing || isRemoteScreenSharing) && (
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 bg-purple-400 rounded-full animate-pulse"></div>
-                  <span className="text-purple-400 font-medium">
-                    {isScreenSharing ? "Sharing" : "Viewing"}
-                  </span>
+                  <span className="text-purple-400 font-medium">{isScreenSharing ? "Sharing" : "Viewing"}</span>
                 </div>
               )}
               {subtitlesEnabled && (
@@ -1705,25 +1483,9 @@ const MeetingRoom = () => {
           </div>
         )}
       </div>
-      <TranslateWordModal
-        open={showTranslate}
-        onClose={() => setShowTranslate(false)}
-      />
+      <TranslateWordModal open={showTranslate} onClose={() => setShowTranslate(false)} />
     </>
-  );
-};
+  )
+}
 
-export default MeetingRoom;
-
-
-
-
-
-
-
-
-
-
-
-
-
+export default MeetingRoom
